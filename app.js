@@ -135,10 +135,11 @@ function nav(view,el){
 
 // ── DELIVERABLES ──
 function renderDeliverables(){
+  var canCreate=can('can_create_deliverables');
   document.getElementById('topbar-actions').innerHTML=
-    can('can_create_deliverables')
-      ?'<button class="btn btn-primary btn-sm" onclick="openDeliverableModal()">+ Nuevo entregable</button>'
-      :'<span style="font-size:11px;color:var(--text3)">Sin permiso para crear</span>';
+    '<button class="btn btn-sm" onclick="exportCSV()">&#8595; CSV</button>'+
+    '<button class="btn btn-sm" onclick="exportMIDP()">&#8595; MIDP</button>'+
+    (canCreate?'<button class="btn btn-primary btn-sm" onclick="openDeliverableModal()">+ Nuevo entregable</button>':'');
 
   var schemaFilters=APP.schemas
     .filter(function(s){return FILTER_FIELDS.indexOf(s.key)>=0;})
@@ -157,10 +158,7 @@ function renderDeliverables(){
   document.getElementById('content').innerHTML=
     '<div class="page-header">'+
     '<div><h1 class="page-title">Entregables MIDP</h1><p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div>'+
-    '<div style="display:flex;gap:8px">'+
-    '<button class="btn btn-sm" onclick="exportCSV()">Exportar CSV</button>'+
-    '<button class="btn btn-sm" onclick="exportMIDP()">Exportar MIDP</button>'+
-    '</div></div>'+
+    '</div>'+
     '<div class="kpi-grid" id="kpi-area"><div class="loading"><div class="spinner"></div></div></div>'+
     '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">'+
     '<div class="search-wrap" style="max-width:200px">'+
@@ -233,11 +231,12 @@ function loadDeliverables(){
       return;
     }
 
-    var html='<div style="overflow-x:auto;border-radius:var(--rl);border:1px solid var(--border);background:var(--surface)">'+
+    var html='<div style="overflow-x:auto;border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);'+
+      '-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent;">'+
       '<table class="tbl" style="min-width:1500px"><thead>'+
       '<tr>'+
-      '<th rowspan="2" style="min-width:160px">Codigo</th>'+
-      '<th rowspan="2" style="min-width:200px">Nombre</th>'+
+      '<th rowspan="2" style="min-width:160px;position:sticky;left:0;z-index:3;background:var(--bg);box-shadow:2px 0 4px rgba(0,0,0,.06)">Codigo</th>'+
+      '<th rowspan="2" style="min-width:200px;position:sticky;left:160px;z-index:3;background:var(--bg);box-shadow:2px 0 4px rgba(0,0,0,.06)">Nombre</th>'+
       '<th rowspan="2">Estado</th>'+
       '<th rowspan="2">Formato</th>'+
       '<th rowspan="2">Modelo BIM</th>'+
@@ -268,10 +267,11 @@ function loadDeliverables(){
             '<td style="font-size:10px;color:var(--text3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+resp+'">'+resp+'</td>';
         }).join('');
         return '<tr>'+
-          '<td><span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
+          '<td style="position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:2px 0 4px rgba(0,0,0,.04)">'+
+          '<span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
           (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:2px">Pkg: '+d.work_package+'</div>':'')+
           '</td>'+
-          '<td><div style="max-width:200px">'+
+          '<td style="position:sticky;left:160px;z-index:2;background:var(--surface);box-shadow:2px 0 4px rgba(0,0,0,.04)"><div style="max-width:200px">'+
           '<div style="font-weight:600;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.name+'</div>'+
           (d.description?'<div style="font-size:9px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.description+'</div>':'')+
           '</div></td>'+

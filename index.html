@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MIDP BIM Platform — ISO 19650</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#2563eb;--brand-d:#1d4ed8;--brand-light:#eff6ff;--brand-border:#bfdbfe;
+  --green:#059669;--green-light:#ecfdf5;--green-border:#a7f3d0;
+  --amber:#d97706;--amber-light:#fffbeb;
+  --red:#dc2626;--red-light:#fef2f2;
+  --violet:#7c3aed;--violet-light:#f5f3ff;
+  --slate:#64748b;
+  --bg:#f8fafc;--surface:#fff;--border:#e2e8f0;--border2:#f1f5f9;
+  --text:#0f172a;--text2:#475569;--text3:#94a3b8;
+  --r:8px;--rl:12px;--rxl:16px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow2:0 4px 16px rgba(0,0,0,.10);
+}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif;font-weight:600;letter-spacing:-.02em}
+code,.mono{font-family:'JetBrains Mono',monospace}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text2);transition:all .15s;font-family:'Inter',sans-serif}
+.btn:hover{background:var(--bg);box-shadow:var(--shadow)}
+.btn-primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn-primary:hover{background:var(--brand-d);box-shadow:0 2px 8px rgba(37,99,235,.3)}
+.btn-danger{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-danger:hover{background:#b91c1c}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-ghost{border:none;background:transparent;color:var(--text3)}
+.btn-ghost:hover{background:var(--bg);color:var(--text)}
+
+/* ── INPUTS ── */
+.input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--r);font-size:13px;font-family:'Inter',sans-serif;color:var(--text);background:var(--surface);transition:border .15s,box-shadow .15s;outline:none}
+.input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.input::placeholder{color:var(--text3)}
+select.input{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");background-position:right 8px center;background-repeat:no-repeat;background-size:16px;padding-right:32px}
+.label{display:block;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+textarea.input{resize:vertical;min-height:70px}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow)}
+.card-hover{transition:box-shadow .2s}.card-hover:hover{box-shadow:var(--shadow2)}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600}
+.b-pending{background:#f1f5f9;color:var(--slate)}
+.b-progress{background:var(--brand-light);color:var(--brand)}
+.b-review{background:var(--amber-light);color:var(--amber)}
+.b-approved{background:var(--green-light);color:var(--green)}
+.b-issued{background:var(--violet-light);color:var(--violet)}
+.b-rejected{background:var(--red-light);color:var(--red)}
+.b-admin{background:var(--brand-light);color:var(--brand)}
+.b-bim{background:#f0fdf4;color:#15803d}
+.b-spec{background:#f1f5f9;color:var(--slate)}
+
+/* ── CODE CHIP ── */
+.code-chip{font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--brand-light);color:var(--brand);padding:2px 7px;border-radius:5px;border:1px solid var(--brand-border);white-space:nowrap}
+
+/* ── TABLE ── */
+.tbl{width:100%;border-collapse:collapse;font-size:12px}
+.tbl th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;background:var(--bg);border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--border2);color:var(--text2);vertical-align:middle}
+.tbl tbody tr:hover td{background:#fafbfc}
+.tbl tbody tr:last-child td{border-bottom:none}
+
+/* ── PROGRESS ── */
+.prog-track{height:6px;background:var(--border2);border-radius:99px;overflow:hidden}
+.prog-fill{height:100%;border-radius:99px;background:var(--brand);transition:width .5s}
+
+/* ── LOGIN PAGE ── */
+#login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#0f172a 100%);position:relative;overflow:hidden}
+#login-page::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 2px 2px,rgba(255,255,255,.05) 1px,transparent 0);background-size:32px 32px}
+.login-card{background:rgba(255,255,255,.07);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12);border-radius:var(--rxl);padding:36px;width:100%;max-width:400px;position:relative;z-index:1}
+.login-logo{width:48px;height:48px;background:var(--brand);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
+.login-title{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;color:#fff;text-align:center;letter-spacing:-.03em}
+.login-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,.35);text-align:center;text-transform:uppercase;letter-spacing:.12em;margin-bottom:28px}
+.login-label{font-size:11px;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
+.login-input{width:100%;padding:10px 14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:var(--r);color:#fff;font-size:13px;font-family:'Inter',sans-serif;outline:none;transition:border .15s,box-shadow .15s;margin-bottom:14px}
+.login-input:focus{border-color:rgba(99,153,255,.6);box-shadow:0 0 0 3px rgba(37,99,235,.2)}
+.login-input::placeholder{color:rgba(255,255,255,.25)}
+.login-btn{width:100%;padding:11px;background:var(--brand);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s,transform .1s;margin-top:4px}
+.login-btn:hover{background:var(--brand-d);transform:translateY(-1px)}
+.login-btn:active{transform:translateY(0)}
+.login-demo{margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.08);text-align:center}
+.login-demo p{font-size:11px;color:rgba(255,255,255,.25);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.login-demo code{font-size:12px;color:rgba(255,255,255,.45);display:block}
+.login-error{background:rgba(220,38,38,.15);border:1px solid rgba(220,38,38,.3);color:#fca5a5;border-radius:var(--r);padding:8px 12px;font-size:12px;margin-bottom:12px;display:none}
+
+/* ── APP SHELL ── */
+#app{display:none;height:100vh;overflow:hidden}
+.shell{display:flex;height:100%}
+
+/* ── SIDEBAR ── */
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;height:100%;overflow:hidden}
+.sb-logo{padding:16px 14px 12px;border-bottom:1px solid var(--border2)}
+.sb-logo-inner{display:flex;align-items:center;gap:10px}
+.sb-mark{width:32px;height:32px;background:var(--brand);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sb-mark svg{width:16px;height:16px;fill:#fff}
+.sb-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:var(--text)}
+.sb-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}
+.sb-proj{margin:10px 10px 4px;padding:8px 10px;background:var(--brand-light);border-radius:var(--r);border:1px solid var(--brand-border)}
+.sb-proj-code{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:500;color:var(--brand)}
+.sb-proj-name{font-size:10px;color:#1e40af;line-height:1.3;margin-top:1px}
+.sb-nav{flex:1;padding:8px;overflow-y:auto}
+.sb-section{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;padding:10px 10px 4px}
+.sb-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .12s;margin-bottom:1px;border:none;background:none;width:100%;text-align:left;font-family:'Inter',sans-serif}
+.sb-item:hover{background:var(--bg);color:var(--text)}
+.sb-item.active{background:var(--brand-light);color:var(--brand)}
+.sb-item svg{width:15px;height:15px;flex-shrink:0;opacity:.6}
+.sb-item.active svg{opacity:1}
+.sb-user{padding:10px;border-top:1px solid var(--border2)}
+.sb-user-inner{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r)}
+.sb-avatar{width:30px;height:30px;border-radius:50%;background:var(--brand-light);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--brand);flex-shrink:0}
+.sb-uname{font-size:12px;font-weight:600;color:var(--text)}
+.sb-logout{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:11px;color:var(--red);cursor:pointer;border-radius:var(--r);border:none;background:none;width:100%;font-family:'Inter',sans-serif;margin-top:2px}
+.sb-logout:hover{background:var(--red-light)}
+
+/* ── TOPBAR ── */
+.topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;flex-shrink:0;background:var(--surface)}
+.topbar-bread{font-size:12px;color:var(--text3)}
+.topbar-bread span{color:var(--text2);font-weight:500}
+.topbar-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+/* ── MAIN ── */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.content{flex:1;overflow-y:auto;padding:20px;animation:fadeIn .2s ease-out}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── PAGE HEADER ── */
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.page-title{font-size:22px;color:var(--text)}
+.page-sub{font-size:12px;color:var(--text3);margin-top:2px}
+
+/* ── KPI GRID ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi{padding:16px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);display:flex;align-items:flex-start;gap:12px}
+.kpi-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.kpi-icon svg{width:18px;height:18px}
+.kpi-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.kpi-value{font-size:24px;font-weight:700;font-family:'Space Grotesk',sans-serif;color:var(--text);line-height:1.1;margin-top:2px}
+.kpi-sub{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* ── FILTERS BAR ── */
+.filters{display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+.filters .input{max-width:260px}
+.search-wrap{position:relative;flex:1;max-width:280px}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text3)}
+.search-wrap .input{padding-left:32px}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px;backdrop-filter:blur(4px)}
+.modal{background:var(--surface);border-radius:var(--rxl);width:100%;max-width:580px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-lg{max-width:720px}
+.modal-header{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.modal-title{font-size:16px;font-weight:600;font-family:'Space Grotesk',sans-serif;color:var(--text)}
+.modal-body{overflow-y:auto;flex:1;padding:20px}
+.modal-footer{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;flex-shrink:0;background:var(--bg);border-radius:0 0 var(--rxl) var(--rxl)}
+
+/* ── FORM GRID ── */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-grid .full{grid-column:1/-1}
+.form-group{display:flex;flex-direction:column}
+
+/* ── CODE PREVIEW ── */
+.code-preview{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:16px}
+.cp-label{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.cp-code{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:600;color:var(--brand);letter-spacing:.03em}
+.cp-ok{color:var(--green);font-size:10px;display:flex;align-items:center;gap:3px}
+.cp-dup{color:var(--red);font-size:10px;display:flex;align-items:center;gap:3px}
+
+/* ── SCHEMA BUILDER ── */
+.schema-item{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;transition:border-color .15s}
+.schema-item:hover{border-color:var(--brand-border)}
+.schema-drag{color:var(--text3);cursor:grab;font-size:16px;line-height:1}
+.schema-order{width:22px;height:22px;border-radius:50%;background:var(--brand-light);color:var(--brand);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.schema-info{flex:1;min-width:0}
+.schema-name{font-size:13px;font-weight:600;color:var(--text)}
+.schema-meta{display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap}
+.schema-key{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);background:var(--bg);padding:1px 5px;border-radius:4px;border:1px solid var(--border)}
+.schema-type-badge{font-size:9px;color:var(--text3);background:var(--bg);padding:1px 6px;border-radius:99px;border:1px solid var(--border)}
+.code-seg{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--brand);background:var(--brand-light);padding:1px 6px;border-radius:4px;border:1px solid var(--brand-border)}
+.schema-vals{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px}
+.val-pill{font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 6px;border-radius:4px;background:var(--brand-light);color:var(--brand);border:1px solid var(--brand-border)}
+
+/* ── CONFIRM MODAL ── */
+.confirm-modal{max-width:400px}
+
+/* ── PROGRESS PAGE ── */
+.prog-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.prog-label{width:110px;font-size:11px;color:var(--text2);font-weight:500;flex-shrink:0}
+.prog-bar-wrap{flex:1}
+.prog-pct{width:36px;font-size:11px;color:var(--text3);text-align:right;flex-shrink:0}
+
+/* ── EMPTY STATE ── */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 16px;text-align:center}
+.empty-icon{width:52px;height:52px;border-radius:14px;background:var(--bg);display:flex;align-items:center;justify-content:center;margin-bottom:14px}
+.empty-icon svg{width:24px;height:24px;color:var(--text3)}
+.empty-title{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:4px}
+.empty-desc{font-size:12px;color:var(--text3);max-width:280px;margin-bottom:14px}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:20px;right:20px;background:var(--text);color:#fff;padding:10px 16px;border-radius:var(--r);font-size:13px;font-weight:500;z-index:999;transform:translateY(60px);transition:transform .3s;box-shadow:0 4px 20px rgba(0,0,0,.2)}
+.toast.show{transform:translateY(0)}
+.toast.success{background:var(--green)}
+.toast.error{background:var(--red)}
+
+/* ── STAT BARS ── */
+.stat-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.stat-bar-label{width:80px;font-size:11px;color:var(--text2)}
+.stat-bar-track{flex:1;height:7px;background:var(--border2);border-radius:99px;overflow:hidden}
+.stat-bar-fill{height:100%;border-radius:99px;transition:width .5s}
+.stat-bar-count{width:24px;text-align:right;font-size:11px;color:var(--text3);font-weight:600}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .sidebar{display:none}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  .form-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════
+     LOGIN PAGE
+════════════════════════════════════════════════════ -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 24 24" fill="white" width="22" height="22"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+    <h1 class="login-title">MIDP</h1>
+    <p class="login-sub">BIM Platform &middot; ISO 19650</p>
+    <div class="login-error" id="login-error">Correo o contraseña incorrectos.</div>
+    <label class="login-label">Correo electrónico</label>
+    <input type="email" id="login-email" class="login-input" placeholder="usuario@empresa.com" value="admin@midp.bim">
+    <label class="login-label">Contraseña</label>
+    <input type="password" id="login-pass" class="login-input" placeholder="••••••••" value="Admin@2025">
+    <button class="login-btn" onclick="doLogin()">Iniciar sesión</button>
+    <div class="login-demo">
+      <p>Credenciales de demo</p>
+      <code>admin@midp.bim &nbsp;/&nbsp; Admin@2025</code>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     APP SHELL
+════════════════════════════════════════════════════ -->
+<div id="app">
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sb-logo">
+        <div class="sb-logo-inner">
+          <div class="sb-mark">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <div>
+            <div class="sb-title">MIDP</div>
+            <div class="sb-sub">BIM · ISO 19650</div>
+          </div>
+        </div>
+      </div>
+      <div class="sb-proj">
+        <div class="sb-proj-code">HRDTRU-2025</div>
+        <div class="sb-proj-name">Hospital Regional Docente de Trujillo</div>
+      </div>
+      <nav class="sb-nav">
+        <div class="sb-section">Gestión</div>
+        <button class="sb-item active" onclick="nav('deliverables',this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg>
+          Entregables
+        </button>
+        <button class="sb-item" onclick="nav('progress',this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Control de avance
+        </button>
+        <div class="sb-section">Administración</div>
+        <button class="sb-item" onclick="nav('schemas',this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="8" y="14" width="7" height="7" rx="1"/></svg>
+          Config. de campos
+        </button>
+        <button class="sb-item" onclick="nav('users',this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Usuarios
+        </button>
+      </nav>
+      <div class="sb-user">
+        <div class="sb-user-inner">
+          <div class="sb-avatar" id="sb-avatar">A</div>
+          <div>
+            <div class="sb-uname" id="sb-uname">Admin MIDP</div>
+            <span class="badge b-admin" style="font-size:9px">Administrador</span>
+          </div>
+        </div>
+        <button class="sb-logout" onclick="doLogout()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Cerrar sesión
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-bread">ISO 19650 &rsaquo; <span id="bread-title">Entregables</span></div>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </div>
+      <div class="content" id="content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- MODAL CONTAINER -->
+<div id="modal-container"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+const STATE = {
+  currentUser: null,
+  users: [
+    {id:1, name:'Admin MIDP', email:'admin@midp.bim', role:'admin', specialty:'BIM Management', company:'Consorcio SDD', phone:'+51 999 000 001', active:true},
+    {id:2, name:'Joel Rodríguez', email:'joel@sdd.pe', role:'bim_manager', specialty:'BIM Manager', company:'Consorcio SDD', phone:'+51 999 000 002', active:true},
+    {id:3, name:'Carlos Torres', email:'c.torres@sdd.pe', role:'specialist', specialty:'Estructuras', company:'Consorcio SDD', phone:'+51 999 000 003', active:true},
+    {id:4, name:'María Flores', email:'m.flores@sdd.pe', role:'specialist', specialty:'Hidráulica', company:'Consorcio SDD', phone:'+51 999 000 004', active:true},
+    {id:5, name:'Pedro Sánchez', email:'p.sanchez@sdd.pe', role:'specialist', specialty:'Eléctricas', company:'Consorcio SDD', phone:'+51 999 000 005', active:false},
+  ],
+  schemas: [
+    {id:1,name:'Proyecto',key:'project',type:'text',required:true,inCode:true,order:1,sep:'-',maxLen:10,values:null},
+    {id:2,name:'Disciplina',key:'discipline',type:'dropdown',required:true,inCode:true,order:2,sep:'-',maxLen:5,values:['ARQ','EST','HID','SAN','ELE','MEC','EQM','COO']},
+    {id:3,name:'Fase',key:'phase',type:'dropdown',required:true,inCode:true,order:3,sep:'-',maxLen:5,values:['EP','AP','PD','CO']},
+    {id:4,name:'Zona',key:'zone',type:'dropdown',required:true,inCode:true,order:4,sep:'-',maxLen:5,values:['Z00','Z01','Z02','Z03','Z04','Z05']},
+    {id:5,name:'Nivel',key:'level',type:'dropdown',required:false,inCode:true,order:5,sep:'-',maxLen:5,values:['SS','PB','P1','P2','P3','AZ','GN']},
+    {id:6,name:'Tipo',key:'type',type:'dropdown',required:true,inCode:true,order:6,sep:'-',maxLen:5,values:['PL','MO','ES','IN','CR','PR','DO']},
+    {id:7,name:'Número',key:'number',type:'text',required:true,inCode:true,order:7,sep:'',maxLen:4,values:null},
+  ],
+  deliverables: [
+    {id:1,code:'HRDTRU-ARQ-PD-Z03-P2-PL-0042',name:'Plano Arquitectura Quirófano Principal',desc:'Planta y cortes del quirófano 1',status:'approved',assignedTo:2,planned:'2025-06-15',actual:'2025-06-12',version:3,progress:100,fields:{project:'HRDTRU',discipline:'ARQ',phase:'PD',zone:'Z03',level:'P2',type:'PL',number:'0042'}},
+    {id:2,code:'HRDTRU-ARQ-PD-Z01-PB-PL-0018',name:'Plano Urgencias - Planta Baja',desc:'Layout general del área de urgencias',status:'for_review',assignedTo:2,planned:'2025-06-30',actual:null,version:2,progress:65,fields:{project:'HRDTRU',discipline:'ARQ',phase:'PD',zone:'Z01',level:'PB',type:'PL',number:'0018'}},
+    {id:3,code:'HRDTRU-EST-PD-Z03-P1-MO-0007',name:'Modelo BIM Estructural UCI',desc:'Modelo Revit estructura piso 1 UCI',status:'in_progress',assignedTo:3,planned:'2025-07-20',actual:null,version:1,progress:40,fields:{project:'HRDTRU',discipline:'EST',phase:'PD',zone:'Z03',level:'P1',type:'MO',number:'0007'}},
+    {id:4,code:'HRDTRU-HID-PD-Z05-GN-ES-0003',name:'Especificaciones Hidráulica Serv. Gen.',desc:'Especificaciones técnicas del sistema',status:'in_progress',assignedTo:4,planned:'2025-07-25',actual:null,version:1,progress:30,fields:{project:'HRDTRU',discipline:'HID',phase:'PD',zone:'Z05',level:'GN',type:'ES',number:'0003'}},
+    {id:5,code:'HRDTRU-ELE-AP-Z02-P3-PL-0011',name:'Plano Eléctrico Hospitalización P3',desc:'Tableros y circuitos piso 3',status:'pending',assignedTo:5,planned:'2025-08-10',actual:null,version:1,progress:0,fields:{project:'HRDTRU',discipline:'ELE',phase:'AP',zone:'Z02',level:'P3',type:'PL',number:'0011'}},
+    {id:6,code:'HRDTRU-EQM-PD-Z04-GN-IN-0005',name:'Informe Equipamiento Diagnóstico',desc:'Listado y fichas de equipos de imágenes',status:'pending',assignedTo:null,planned:'2025-08-20',actual:null,version:1,progress:0,fields:{project:'HRDTRU',discipline:'EQM',phase:'PD',zone:'Z04',level:'GN',type:'IN',number:'0005'}},
+    {id:7,code:'HRDTRU-ARQ-PD-Z02-P1-PL-0031',name:'Plano Hospitalización Planta 1',desc:'Distribución de camas y circulaciones',status:'issued',assignedTo:2,planned:'2025-05-30',actual:'2025-05-28',version:4,progress:100,fields:{project:'HRDTRU',discipline:'ARQ',phase:'PD',zone:'Z02',level:'P1',type:'PL',number:'0031'}},
+    {id:8,code:'HRDTRU-EST-AP-Z01-PB-MO-0002',name:'Modelo Estructural Urgencias',desc:'Modelo esquemático anteproyecto',status:'approved',assignedTo:3,planned:'2025-05-15',actual:'2025-05-20',version:2,progress:100,fields:{project:'HRDTRU',discipline:'EST',phase:'AP',zone:'Z01',level:'PB',type:'MO',number:'0002'}},
+  ],
+  production: {
+    1:{planned:12,consumed:12},
+    2:{planned:10,consumed:7},
+    3:{planned:8,consumed:3},
+    4:{planned:6,consumed:2},
+    5:{planned:10,consumed:0},
+    6:{planned:8,consumed:0},
+    7:{planned:14,consumed:14},
+    8:{planned:8,consumed:8},
+  },
+  nextId: {del:9, user:6, schema:8},
+  filters: {search:'',status:'',page:1},
+  userFilters: {search:''},
+};
+
+// ═══════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════
+const STATUS_CFG = {
+  pending:     {label:'Pendiente',    cls:'b-pending'},
+  in_progress: {label:'En progreso',  cls:'b-progress'},
+  for_review:  {label:'En revisión',  cls:'b-review'},
+  approved:    {label:'Aprobado',     cls:'b-approved'},
+  issued:      {label:'Emitido',      cls:'b-issued'},
+  rejected:    {label:'Rechazado',    cls:'b-rejected'},
+};
+const ROLE_CFG = {
+  admin:       {label:'Administrador',cls:'b-admin'},
+  bim_manager: {label:'BIM Manager',  cls:'b-bim'},
+  specialist:  {label:'Especialista', cls:'b-spec'},
+};
+
+const statusBadge = s => {
+  const c = STATUS_CFG[s]||STATUS_CFG.pending;
+  return `<span class="badge ${c.cls}">${c.label}</span>`;
+};
+const roleBadge = r => {
+  const c = ROLE_CFG[r]||ROLE_CFG.specialist;
+  return `<span class="badge ${c.cls}">${c.label}</span>`;
+};
+const userById = id => STATE.users.find(u=>u.id===id);
+const fmtDate = d => d ? new Date(d).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+const progColor = p => p>=80?'var(--green)':p>=50?'var(--brand)':'var(--amber)';
+const initials = n => n.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
+function toast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(()=>t.className='toast',2800);
+}
+
+function buildCode(fields) {
+  const schemas = STATE.schemas.filter(s=>s.inCode).sort((a,b)=>a.order-b.order);
+  let code = '';
+  for(let i=0;i<schemas.length;i++){
+    const s=schemas[i];
+    const v=fields[s.key];
+    if(!v) continue;
+    code += String(v).substring(0,s.maxLen);
+    if(i<schemas.length-1 && s.sep) code += s.sep;
+  }
+  return code;
+}
+
+function isDuplicate(code, excludeId=null) {
+  return STATE.deliverables.some(d=>d.code===code && d.id!==excludeId);
+}
+
+// ═══════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════
+function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const err   = document.getElementById('login-error');
+  const user  = STATE.users.find(u=>u.email===email && u.active);
+  if(!user || pass !== 'Admin@2025') {
+    err.style.display='block';
+    return;
+  }
+  err.style.display='none';
+  STATE.currentUser = user;
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('sb-avatar').textContent = initials(user.name);
+  document.getElementById('sb-uname').textContent = user.name;
+  nav('deliverables', document.querySelector('.sb-item'));
+}
+
+function doLogout() {
+  STATE.currentUser = null;
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-page').style.display='flex';
+}
+
+document.getElementById('login-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+
+// ═══════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════
+const BREAD = {deliverables:'Entregables',progress:'Control de avance',schemas:'Configuración de campos',users:'Gestión de usuarios'};
+
+function nav(view, el) {
+  document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.getElementById('bread-title').textContent = BREAD[view]||view;
+  const views = {deliverables: renderDeliverables, progress: renderProgress, schemas: renderSchemas, users: renderUsers};
+  if(views[view]) views[view]();
+}
+
+// ═══════════════════════════════════════════════════
+// DELIVERABLES
+// ═══════════════════════════════════════════════════
+function renderDeliverables() {
+  const isManager = ['admin','bim_manager'].includes(STATE.currentUser?.role);
+  document.getElementById('topbar-actions').innerHTML =
+    isManager ? `<button class="btn btn-primary btn-sm" onclick="openDeliverableModal()">+ Nuevo entregable</button>` : '';
+
+  let items = STATE.deliverables.slice();
+  if(STATE.filters.search) {
+    const q = STATE.filters.search.toLowerCase();
+    items = items.filter(d=>d.code.toLowerCase().includes(q)||d.name.toLowerCase().includes(q));
+  }
+  if(STATE.filters.status) items = items.filter(d=>d.status===STATE.filters.status);
+
+  const total = STATE.deliverables.length;
+  const approved = STATE.deliverables.filter(d=>['approved','issued'].includes(d.status)).length;
+  const inprog  = STATE.deliverables.filter(d=>d.status==='in_progress').length;
+  const pending  = STATE.deliverables.filter(d=>d.status==='pending').length;
+
+  document.getElementById('content').innerHTML = `
+  <div class="page-header">
+    <div><h1 class="page-title">Entregables</h1><p class="page-sub">${total} entregables · Hospital Regional Docente de Trujillo</p></div>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-icon" style="background:var(--brand-light)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg></div><div><div class="kpi-label">Total</div><div class="kpi-value">${total}</div><div class="kpi-sub">registrados</div></div></div>
+    <div class="kpi"><div class="kpi-icon" style="background:var(--green-light)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div><div><div class="kpi-label">Completados</div><div class="kpi-value" style="color:var(--green)">${approved}</div><div class="kpi-sub">${Math.round(approved/total*100)}% del total</div></div></div>
+    <div class="kpi"><div class="kpi-icon" style="background:var(--brand-light)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div><div class="kpi-label">En proceso</div><div class="kpi-value" style="color:var(--brand)">${inprog}</div><div class="kpi-sub">en progreso</div></div></div>
+    <div class="kpi"><div class="kpi-icon" style="background:#f1f5f9"><svg viewBox="0 0 24 24" fill="none" stroke="var(--slate)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div><div class="kpi-label">Pendientes</div><div class="kpi-value" style="color:var(--slate)">${pending}</div><div class="kpi-sub">sin iniciar</div></div></div>
+  </div>
+  <div class="filters">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="input" placeholder="Buscar código o nombre..." value="${STATE.filters.search}" oninput="STATE.filters.search=this.value;renderDeliverables()">
+    </div>
+    <select class="input" style="width:160px" onchange="STATE.filters.status=this.value;renderDeliverables()">
+      <option value="">Todos los estados</option>
+      ${Object.entries(STATUS_CFG).map(([v,c])=>`<option value="${v}" ${STATE.filters.status===v?'selected':''}>${c.label}</option>`).join('')}
+    </select>
+    <span style="font-size:11px;color:var(--text3)">${items.length} resultado(s)</span>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr>
+        <th>Código</th><th>Nombre</th><th>Estado</th><th>Responsable</th>
+        <th>Fecha plan.</th><th>Avance</th><th>Ver.</th>
+        ${isManager?'<th style="text-align:right">Acciones</th>':''}
+      </tr></thead>
+      <tbody>
+      ${items.length===0?`<tr><td colspan="8"><div class="empty"><div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div><div class="empty-title">Sin entregables</div><div class="empty-desc">No hay resultados para los filtros actuales.</div></div></td></tr>`:''}
+      ${items.map(d=>{
+        const u = userById(d.assignedTo);
+        const p = STATE.production[d.id]||{planned:0,consumed:0};
+        const pct = p.planned>0?Math.round(p.consumed/p.planned*100):d.progress;
+        return `<tr>
+          <td><span class="code-chip">${d.code}</span></td>
+          <td><div style="max-width:220px"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div><div style="font-size:10px;color:var(--text3)">${d.desc}</div></div></td>
+          <td>${statusBadge(d.status)}</td>
+          <td>${u?`<div><div style="font-size:11px;font-weight:600;color:var(--text)">${u.name}</div><div style="font-size:10px;color:var(--text3)">${u.specialty}</div></div>`:'<span style="color:var(--text3);font-size:11px">Sin asignar</span>'}</td>
+          <td style="font-size:11px">${fmtDate(d.planned)}</td>
+          <td><div style="display:flex;align-items:center;gap:6px"><div class="prog-track" style="width:52px"><div class="prog-fill" style="width:${pct}%;background:${progColor(pct)}"></div></div><span style="font-size:10px;color:var(--text3)">${pct}%</span></div></td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3)">v${d.version}</td>
+          ${isManager?`<td><div style="display:flex;gap:4px;justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm" onclick="openDeliverableModal(${d.id})" title="Editar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="confirmDelete(${d.id})" title="Eliminar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
+          </div></td>`:''}
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+
+// ── DELIVERABLE MODAL ──────────────────────────────
+function openDeliverableModal(id=null) {
+  const isEdit = id !== null;
+  const d = isEdit ? STATE.deliverables.find(x=>x.id===id) : null;
+  const schemas = STATE.schemas.filter(s=>s.inCode).sort((a,b)=>a.order-b.order);
+
+  const fieldInputs = schemas.map(s=>{
+    const val = isEdit ? (d.fields[s.key]||'') : '';
+    if(s.type==='dropdown' && s.values) {
+      return `<div class="form-group"><label class="label">${s.name}${s.required?'<span style="color:var(--red)"> *</span>':''} <span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--brand);background:var(--brand-light);padding:1px 4px;border-radius:3px">código #${s.order}</span></label>
+        <select class="input schema-field" data-key="${s.key}" onchange="updateCodePreview()">
+          <option value="">— Seleccionar —</option>
+          ${s.values.map(v=>`<option value="${v}" ${val===v?'selected':''}>${v}</option>`).join('')}
+        </select></div>`;
+    }
+    return `<div class="form-group"><label class="label">${s.name}${s.required?'<span style="color:var(--red)"> *</span>':''} <span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--brand);background:var(--brand-light);padding:1px 4px;border-radius:3px">código #${s.order}</span></label>
+      <input type="text" class="input schema-field" data-key="${s.key}" maxlength="${s.maxLen}" value="${val}" placeholder="máx. ${s.maxLen} caracteres" oninput="updateCodePreview()"></div>`;
+  }).join('');
+
+  const usersOpts = STATE.users.filter(u=>u.active).map(u=>`<option value="${u.id}" ${isEdit&&d.assignedTo===u.id?'selected':''}>${u.name} (${u.specialty||u.role})</option>`).join('');
+
+  document.getElementById('modal-container').innerHTML = `
+  <div class="modal-overlay" id="del-modal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div class="modal-title">${isEdit?`Editar: ${d.code}`:'Nuevo entregable'}</div>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal('del-modal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="code-preview">
+          <div class="cp-label">
+            <span>Código generado automáticamente</span>
+            <span id="code-status"></span>
+          </div>
+          <div class="cp-code" id="code-preview-val">${isEdit?d.code:'Complete los campos...'}</div>
+        </div>
+        <div style="margin-bottom:18px">
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Campos de codificación</div>
+          <div class="form-grid">${fieldInputs}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Información del entregable</div>
+          <div class="form-grid">
+            <div class="form-group full"><label class="label">Nombre <span style="color:var(--red)">*</span></label>
+              <input type="text" class="input" id="del-name" value="${isEdit?d.name:''}" placeholder="Ej: Plano de Arquitectura - Planta General"></div>
+            <div class="form-group full"><label class="label">Descripción</label>
+              <textarea class="input" id="del-desc" placeholder="Descripción breve...">${isEdit?d.desc:''}</textarea></div>
+            <div class="form-group"><label class="label">Estado</label>
+              <select class="input" id="del-status">
+                ${Object.entries(STATUS_CFG).map(([v,c])=>`<option value="${v}" ${isEdit&&d.status===v?'selected':''}>${c.label}</option>`).join('')}
+              </select></div>
+            <div class="form-group"><label class="label">Responsable</label>
+              <select class="input" id="del-assigned">
+                <option value="">Sin asignar</option>${usersOpts}
+              </select></div>
+            <div class="form-group"><label class="label">Fecha planificada</label>
+              <input type="date" class="input" id="del-planned" value="${isEdit&&d.planned?d.planned:''}"></div>
+            ${isEdit?`<div class="form-group"><label class="label">Fecha real</label>
+              <input type="date" class="input" id="del-actual" value="${d.actual||''}"></div>`:''}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('del-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveDeliverable(${id})">
+          ${isEdit?'Actualizar entregable':'Crear entregable'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+  if(isEdit) updateCodePreview(id);
+}
+
+function updateCodePreview(excludeId=null) {
+  const fields = {};
+  document.querySelectorAll('.schema-field').forEach(el=>{ fields[el.dataset.key]=el.value; });
+  const code = buildCode(fields);
+  const preview = document.getElementById('code-preview-val');
+  const status  = document.getElementById('code-status');
+  if(!preview) return;
+  if(!code||code.length<4){ preview.textContent='Complete los campos...'; preview.style.color='var(--text3)'; status.innerHTML=''; return; }
+  preview.textContent = code;
+  const dup = isDuplicate(code, excludeId);
+  preview.style.color = dup?'var(--red)':'var(--brand)';
+  status.innerHTML = dup
+    ? '<span class="cp-dup">⚠ Código duplicado</span>'
+    : '<span class="cp-ok">✓ Disponible</span>';
+}
+
+function saveDeliverable(id) {
+  const fields = {};
+  let valid = true;
+  document.querySelectorAll('.schema-field').forEach(el=>{
+    const key = el.dataset.key;
+    const s = STATE.schemas.find(x=>x.key===key);
+    fields[key] = el.value;
+    if(s&&s.required&&!el.value){ el.style.borderColor='var(--red)'; valid=false; }
+    else el.style.borderColor='';
+  });
+  const name = document.getElementById('del-name').value.trim();
+  if(!name){ document.getElementById('del-name').style.borderColor='var(--red)'; valid=false; }
+  else document.getElementById('del-name').style.borderColor='';
+  if(!valid){ toast('Completa los campos obligatorios.','error'); return; }
+
+  const code = buildCode(fields);
+  if(!code){ toast('No se pudo generar el código.','error'); return; }
+  if(isDuplicate(code, id!==null?id:null)){ toast('Código duplicado. Cambia los valores.','error'); return; }
+
+  const status  = document.getElementById('del-status').value;
+  const assigned= parseInt(document.getElementById('del-assigned').value)||null;
+  const planned = document.getElementById('del-planned').value||null;
+  const actual  = document.getElementById('del-actual')?.value||null;
+  const desc    = document.getElementById('del-desc').value;
+
+  if(id!==null) {
+    const idx = STATE.deliverables.findIndex(d=>d.id===id);
+    STATE.deliverables[idx] = {...STATE.deliverables[idx],code,name,desc,status,assignedTo:assigned,planned,actual,fields,version:STATE.deliverables[idx].version+1};
+    toast('Entregable actualizado correctamente.');
+  } else {
+    STATE.deliverables.push({id:STATE.nextId.del++,code,name,desc,status,assignedTo:assigned,planned,actual:null,version:1,progress:0,fields});
+    STATE.production[STATE.nextId.del-1]={planned:10,consumed:0};
+    toast('Entregable creado correctamente.');
+  }
+  closeModal('del-modal');
+  renderDeliverables();
+}
+
+function confirmDelete(id) {
+  const d = STATE.deliverables.find(x=>x.id===id);
+  document.getElementById('modal-container').innerHTML = `
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal confirm-modal">
+      <div class="modal-header"><div class="modal-title">¿Eliminar entregable?</div><button class="btn btn-ghost btn-sm" onclick="closeModal('confirm-modal')">✕</button></div>
+      <div class="modal-body">
+        <p style="color:var(--text2);font-size:13px;margin-bottom:10px">Se eliminará el entregable:</p>
+        <div style="background:var(--bg);border-radius:var(--r);padding:12px;border:1px solid var(--border)">
+          <div class="code-chip" style="margin-bottom:4px">${d.code}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:6px">${d.name}</div>
+        </div>
+        <p style="color:var(--red);font-size:12px;margin-top:12px">⚠ Esta acción no se puede deshacer.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('confirm-modal')">Cancelar</button>
+        <button class="btn btn-danger" onclick="deleteDeliverable(${id})">Eliminar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function deleteDeliverable(id) {
+  STATE.deliverables = STATE.deliverables.filter(d=>d.id!==id);
+  closeModal('confirm-modal');
+  toast('Entregable eliminado.');
+  renderDeliverables();
+}
+
+// ═══════════════════════════════════════════════════
+// PROGRESS / AVANCE
+// ═══════════════════════════════════════════════════
+function renderProgress() {
+  document.getElementById('topbar-actions').innerHTML = '';
+  let totalPlan=0, totalCons=0;
+  STATE.deliverables.forEach(d=>{ const p=STATE.production[d.id]||{planned:0,consumed:0}; totalPlan+=p.planned; totalCons+=p.consumed; });
+  const ratio = totalPlan>0?(totalCons/totalPlan).toFixed(2):'—';
+  const pctGen = totalPlan>0?Math.round(totalCons/totalPlan*100):0;
+
+  const byDisc = {};
+  STATE.deliverables.forEach(d=>{
+    const disc = d.fields.discipline||'—';
+    if(!byDisc[disc]) byDisc[disc]={planned:0,consumed:0,count:0};
+    const p = STATE.production[d.id]||{planned:0,consumed:0};
+    byDisc[disc].planned+=p.planned; byDisc[disc].consumed+=p.consumed; byDisc[disc].count++;
+  });
+
+  document.getElementById('content').innerHTML = `
+  <div class="page-header"><div><h1 class="page-title">Control de avance</h1><p class="page-sub">Unidades productivas planificadas vs. consumidas</p></div></div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi"><div class="kpi-icon" style="background:var(--brand-light)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><div><div class="kpi-label">Unid. planificadas</div><div class="kpi-value">${totalPlan}</div><div class="kpi-sub">total del proyecto</div></div></div>
+    <div class="kpi"><div class="kpi-icon" style="background:var(--green-light)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><div><div class="kpi-label">Unid. consumidas</div><div class="kpi-value" style="color:var(--green)">${totalCons}</div><div class="kpi-sub">${pctGen}% de avance</div></div></div>
+    <div class="kpi"><div class="kpi-icon" style="background:var(--amber-light)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div><div class="kpi-label">Ratio productividad</div><div class="kpi-value" style="color:var(--amber)">${ratio}</div><div class="kpi-sub">consumido / planificado</div></div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+    <div class="card" style="padding:18px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">Avance por disciplina</div>
+      ${Object.entries(byDisc).map(([disc,data])=>{
+        const pct = data.planned>0?Math.round(data.consumed/data.planned*100):0;
+        return `<div class="prog-row"><div class="prog-label">${disc}</div><div class="prog-bar-wrap"><div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:${progColor(pct)}"></div></div></div><div class="prog-pct">${pct}%</div></div>`;
+      }).join('')}
+    </div>
+    <div class="card" style="padding:18px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">Distribución por estado</div>
+      ${Object.entries(STATUS_CFG).map(([s,c])=>{
+        const cnt = STATE.deliverables.filter(d=>d.status===s).length;
+        const pct = Math.round(cnt/STATE.deliverables.length*100);
+        const colors={approved:'var(--green)',issued:'var(--violet)',in_progress:'var(--brand)',for_review:'var(--amber)',pending:'var(--slate)',rejected:'var(--red)'};
+        return `<div class="stat-bar-row"><div class="stat-bar-label">${c.label}</div><div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${colors[s]}"></div></div><div class="stat-bar-count">${cnt}</div></div>`;
+      }).join('')}
+    </div>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table class="tbl">
+      <thead><tr><th>Entregable</th><th>Disciplina</th><th>Planif.</th><th>Consumido</th><th>Avance</th><th>Ratio</th><th>Estado</th><th style="text-align:right">Actualizar</th></tr></thead>
+      <tbody>
+      ${STATE.deliverables.map(d=>{
+        const p=STATE.production[d.id]||{planned:0,consumed:0};
+        const pct=p.planned>0?Math.round(p.consumed/p.planned*100):0;
+        const r=p.planned>0?(p.consumed/p.planned).toFixed(2):'—';
+        return `<tr>
+          <td><span class="code-chip">${d.code}</span><div style="font-size:10px;color:var(--text3);margin-top:2px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.name}</div></td>
+          <td><span class="badge b-progress" style="font-size:10px">${d.fields.discipline||'—'}</span></td>
+          <td style="font-weight:600">${p.planned}</td>
+          <td style="font-weight:600;color:${progColor(pct)}">${p.consumed}</td>
+          <td><div style="display:flex;align-items:center;gap:6px"><div class="prog-track" style="width:60px"><div class="prog-fill" style="width:${pct}%;background:${progColor(pct)}"></div></div><span style="font-size:10px;color:var(--text3)">${pct}%</span></div></td>
+          <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${r<0.8?'var(--green)':'var(--text3)'}">${r}</td>
+          <td>${statusBadge(d.status)}</td>
+          <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="openProgressModal(${d.id})">Registrar</button></td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function openProgressModal(id) {
+  const d = STATE.deliverables.find(x=>x.id===id);
+  const p = STATE.production[id]||{planned:0,consumed:0};
+  document.getElementById('modal-container').innerHTML = `
+  <div class="modal-overlay" id="prog-modal">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-header"><div class="modal-title">Registrar avance</div><button class="btn btn-ghost btn-sm" onclick="closeModal('prog-modal')">✕</button></div>
+      <div class="modal-body">
+        <div style="background:var(--bg);border-radius:var(--r);padding:10px 12px;margin-bottom:16px;border:1px solid var(--border)">
+          <div class="code-chip">${d.code}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px">${d.name}</div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group"><label class="label">Unidades planificadas</label>
+            <input type="number" class="input" id="prog-plan" value="${p.planned}" min="0"></div>
+          <div class="form-group"><label class="label">Unidades consumidas</label>
+            <input type="number" class="input" id="prog-cons" value="${p.consumed}" min="0"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('prog-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveProgress(${id})">Guardar avance</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function saveProgress(id) {
+  const plan = parseInt(document.getElementById('prog-plan').value)||0;
+  const cons = parseInt(document.getElementById('prog-cons').value)||0;
+  if(cons>plan){ toast('Las unidades consumidas no pueden superar las planificadas.','error'); return; }
+  STATE.production[id]={planned:plan,consumed:cons};
+  closeModal('prog-modal');
+  toast('Avance registrado correctamente.');
+  renderProgress();
+}
+
+// ═══════════════════════════════════════════════════
+// SCHEMAS
+// ═══════════════════════════════════════════════════
+function renderSchemas() {
+  document.getElementById('topbar-actions').innerHTML = `<button class="btn btn-primary btn-sm" onclick="openSchemaModal()">+ Nuevo campo</button>`;
+  const sorted = STATE.schemas.filter(s=>s.inCode).sort((a,b)=>a.order-b.order);
+  const codeExample = buildCode({project:'HRDTRU',discipline:'ARQ',phase:'PD',zone:'Z03',level:'P2',type:'PL',number:'0042'});
+
+  document.getElementById('content').innerHTML = `
+  <div class="page-header"><div><h1 class="page-title">Configuración de campos</h1><p class="page-sub">Define la estructura del código de entregables. Los cambios afectan a todos los nuevos registros.</p></div></div>
+  <div class="card" style="padding:14px 16px;margin-bottom:16px;background:var(--brand-light);border-color:var(--brand-border)">
+    <div style="font-size:9px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Estructura del código resultante</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:var(--brand);letter-spacing:.03em">${codeExample}</div>
+    <div style="font-size:10px;color:#1e40af;margin-top:4px">Ejemplo con valores por defecto de cada campo</div>
+  </div>
+  <div id="schemas-list">
+    ${STATE.schemas.sort((a,b)=>a.order-b.order).map(s=>`
+    <div class="schema-item">
+      <span class="schema-drag">⠿</span>
+      <div class="schema-order">${s.inCode?s.order:'—'}</div>
+      <div style="width:16px;height:16px;flex-shrink:0">
+        ${s.type==='dropdown'?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>':s.type==='number'?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>'}
+      </div>
+      <div class="schema-info">
+        <div class="schema-name">${s.name}</div>
+        <div class="schema-meta">
+          <span class="schema-key">.${s.key}</span>
+          <span class="schema-type-badge">${s.type==='dropdown'?'lista':s.type==='number'?'número':s.type==='date'?'fecha':'texto'}</span>
+          ${s.required?'<span style="font-size:9px;color:var(--red);font-weight:600">obligatorio</span>':'<span style="font-size:9px;color:var(--slate)">opcional</span>'}
+          ${s.inCode?`<span class="code-seg">código #${s.order}${s.sep?' + "'+s.sep+'"':''}</span>`:''}
+          ${s.maxLen?`<span style="font-size:9px;color:var(--text3)">máx. ${s.maxLen} car.</span>`:''}
+        </div>
+        ${s.values?`<div class="schema-vals">${s.values.map(v=>`<span class="val-pill">${v}</span>`).join('')}</div>`:''}
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" onclick="openSchemaModal(${s.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="confirmDeleteSchema(${s.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+function openSchemaModal(id=null) {
+  const s = id ? STATE.schemas.find(x=>x.id===id) : null;
+  document.getElementById('modal-container').innerHTML = `
+  <div class="modal-overlay" id="schema-modal">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">${s?`Editar campo: ${s.name}`:'Nuevo campo de codificación'}</div><button class="btn btn-ghost btn-sm" onclick="closeModal('schema-modal')">✕</button></div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group full"><label class="label">Nombre del campo <span style="color:var(--red)">*</span></label>
+            <input type="text" class="input" id="sch-name" value="${s?s.name:''}" placeholder="Ej: Disciplina, Fase, Zona..."></div>
+          <div class="form-group"><label class="label">Tipo de campo <span style="color:var(--red)">*</span></label>
+            <select class="input" id="sch-type">
+              <option value="text" ${s&&s.type==='text'?'selected':''}>Texto libre</option>
+              <option value="dropdown" ${s&&s.type==='dropdown'?'selected':''}>Lista desplegable</option>
+              <option value="number" ${s&&s.type==='number'?'selected':''}>Número</option>
+              <option value="date" ${s&&s.type==='date'?'selected':''}>Fecha</option>
+            </select></div>
+          <div class="form-group"><label class="label">Longitud máxima</label>
+            <input type="number" class="input" id="sch-maxlen" value="${s?s.maxLen:10}" min="1" max="50"></div>
+          <div class="form-group"><label class="label">Posición en código</label>
+            <input type="number" class="input" id="sch-order" value="${s?s.order:STATE.schemas.length+1}" min="1" max="20"></div>
+          <div class="form-group"><label class="label">Separador después</label>
+            <input type="text" class="input" id="sch-sep" value="${s?s.sep:'-'}" maxlength="5" placeholder='Ej: - / . (vacío = sin sep)'></div>
+          <div class="form-group" style="justify-content:flex-end;flex-direction:row;align-items:center;gap:16px;padding-top:20px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
+              <input type="checkbox" id="sch-required" ${s&&s.required?'checked':s?'':'checked'}> Obligatorio</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
+              <input type="checkbox" id="sch-incode" ${s&&s.inCode?'checked':s?'':'checked'}> Incluir en código</label>
+          </div>
+          <div class="form-group full" id="sch-vals-wrap" style="${s&&s.type==='dropdown'||!s?'':'display:none'}">
+            <label class="label">Valores permitidos <span style="font-size:9px;color:var(--text3);text-transform:none;letter-spacing:0">(uno por línea)</span></label>
+            <textarea class="input" id="sch-vals" rows="5" style="font-family:'JetBrains Mono',monospace;font-size:11px" placeholder="ARQ&#10;EST&#10;HID&#10;SAN">${s&&s.values?s.values.join('\n'):''}</textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('schema-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveSchema(${id})">
+          ${s?'Actualizar campo':'Crear campo'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('sch-type').addEventListener('change', function(){
+    document.getElementById('sch-vals-wrap').style.display = this.value==='dropdown'?'':'none';
+  });
+}
+
+function saveSchema(id) {
+  const name = document.getElementById('sch-name').value.trim();
+  if(!name){ toast('El nombre es obligatorio.','error'); return; }
+  const type     = document.getElementById('sch-type').value;
+  const maxLen   = parseInt(document.getElementById('sch-maxlen').value)||10;
+  const order    = parseInt(document.getElementById('sch-order').value)||1;
+  const sep      = document.getElementById('sch-sep').value;
+  const required = document.getElementById('sch-required').checked;
+  const inCode   = document.getElementById('sch-incode').checked;
+  const valsRaw  = document.getElementById('sch-vals')?.value||'';
+  const values   = type==='dropdown'&&valsRaw.trim() ? valsRaw.split('\n').map(v=>v.trim()).filter(Boolean) : null;
+  const key      = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+
+  if(id) {
+    const idx = STATE.schemas.findIndex(s=>s.id===id);
+    STATE.schemas[idx]={...STATE.schemas[idx],name,type,maxLen,order,sep,required,inCode,values};
+    toast('Campo actualizado.');
+  } else {
+    STATE.schemas.push({id:STATE.nextId.schema++,name,key,type,maxLen,order,sep,required,inCode,values});
+    toast('Campo creado.');
+  }
+  closeModal('schema-modal');
+  renderSchemas();
+}
+
+function confirmDeleteSchema(id) {
+  const s = STATE.schemas.find(x=>x.id===id);
+  const usedCount = STATE.deliverables.filter(d=>d.fields[s.key]).length;
+  document.getElementById('modal-container').innerHTML = `
+  <div class="modal-overlay" id="sch-confirm">
+    <div class="modal confirm-modal">
+      <div class="modal-header"><div class="modal-title">¿Eliminar campo "${s.name}"?</div><button class="btn btn-ghost btn-sm" onclick="closeModal('sch-confirm')">✕</button></div>
+      <div class="modal-body">
+        ${usedCount>0?`<div style="background:var(--red-light);border:1px solid #fecaca;border-radius:var(--r);padding:10px 12px;color:var(--red);font-size:12px;margin-bottom:12px">⚠ Este campo está en uso por <strong>${usedCount}</strong> entregable(s).</div>`:''}
+        <p style="font-size:13px;color:var(--text2)">¿Confirmas la eliminación del campo <strong>${s.name}</strong> (.${s.key})?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('sch-confirm')">Cancelar</button>
+        <button class="btn btn-danger" onclick="deleteSchema(${id})">Eliminar</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function deleteSchema(id) {
+  STATE.schemas = STATE.schemas.filter(s=>s.id!==id);
+  closeModal('sch-confirm');
+  toast('Campo eliminado.');
+  renderSchemas();
+}
+
+// ═══════════════════════════════════════════════════
+// USERS
+// ═══════════════════════════════════════════════════
+function renderUsers() {
+  const isAdmin = STATE.currentUser?.role==='admin';
+  document.getElementById('topbar-actions').innerHTML = isAdmin
+    ? `<button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Nuevo usuario</button>` : '';
+
+  let users = STATE.users.slice();
+  if(STATE.userFilters.search) {
+    const q = STATE.userFilters.search.toLowerCase();
+    users = users.filter(u=>u.name.toLowerCase().includes(q)||u.email.toLowerCase().includes(q));
+  }
+
+  document.getElementById('content').innerHTML = `
+  <div class="page-header">
+    <div><h1 class="page-title">Usuarios</h1><p class="page-sub">Solo el administrador puede crear y gestionar usuarios. El registro público está deshabilitado.</p></div>
+  </div>
+  <div class="filters">
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="input" placeholder="Buscar por nombre o correo..." value="${STATE.userFilters.search}" oninput="STATE.userFilters.search=this.value;renderUsers()">
+    </div>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table class="tbl">
+      <thead><tr><th>Usuario</th><th>Rol</th><th>Especialidad</th><th>Empresa</th><th>Teléfono</th><th>Estado</th>${isAdmin?'<th style="text-align:right">Acciones</th>':''}</tr></thead>
+      <tbody>
+      ${users.map(u=>`<tr>
+        <td><div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--brand-light);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--brand);flex-shrink:0">${initials(u.name)}</div>
+          <div><div style="font-weight:600;font-size:12px;color:var(--text)">${u.name}</div><div style="font-size:10px;color:var(--text3)">${u.email}</div></div>
+        </div></td>
+        <td>${roleBadge(u.role)}</td>
+        <td style="font-size:11px">${u.specialty||'—'}</td>
+        <td style="font-size:11px">${u.company||'—'}</td>
+        <td style="font-size:11px;font-family:'JetBrains Mono',monospace">${u.phone||'—'}</td>
+        <td>${u.active?'<span class="badge b-approved">Activo</span>':'<span class="badge b-rejected">Inactivo</span>'}</td>
+        ${isAdmin?`<td><div style="display:flex;gap:4px;justify-content:flex-end">
+          <button class="btn btn-ghost btn-sm" onclick="openUserModal(${u.id})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="toggleUser(${u.id})">${u.active?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>':'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'}</button>
+        </div></td>`:''}
+      </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function openUserModal(id=null) {
+  const u = id ? STATE.users.find(x=>x.id===id) : null;
+  document.getElementById('modal-container').innerHTML = `
+  <div class="modal-overlay" id="user-modal">
+    <div class="modal">
+      <div class="modal-header"><div class="modal-title">${u?`Editar: ${u.name}`:'Nuevo usuario'}</div><button class="btn btn-ghost btn-sm" onclick="closeModal('user-modal')">✕</button></div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="form-group full"><label class="label">Nombre completo <span style="color:var(--red)">*</span></label>
+            <input type="text" class="input" id="u-name" value="${u?u.name:''}" placeholder="Juan Pérez López"></div>
+          <div class="form-group full"><label class="label">Correo electrónico <span style="color:var(--red)">*</span></label>
+            <input type="email" class="input" id="u-email" value="${u?u.email:''}" placeholder="juan@empresa.com" ${u?'disabled':''}></div>
+          ${!u?`<div class="form-group full"><label class="label">Contraseña temporal <span style="color:var(--red)">*</span></label>
+            <input type="password" class="input" id="u-pass" placeholder="Mínimo 8 caracteres"></div>`:''}
+          <div class="form-group"><label class="label">Rol <span style="color:var(--red)">*</span></label>
+            <select class="input" id="u-role">
+              <option value="specialist" ${u&&u.role==='specialist'?'selected':''}>Especialista</option>
+              <option value="bim_manager" ${u&&u.role==='bim_manager'?'selected':''}>BIM Manager</option>
+              <option value="admin" ${u&&u.role==='admin'?'selected':''}>Administrador</option>
+            </select></div>
+          <div class="form-group"><label class="label">Especialidad</label>
+            <input type="text" class="input" id="u-spec" value="${u?u.specialty||'':''}" placeholder="Ej: Arquitectura, MEP..."></div>
+          <div class="form-group"><label class="label">Empresa</label>
+            <input type="text" class="input" id="u-comp" value="${u?u.company||'':''}" placeholder="Consorcio SDD"></div>
+          <div class="form-group"><label class="label">Teléfono / WhatsApp</label>
+            <input type="text" class="input" id="u-phone" value="${u?u.phone||'':''}" placeholder="+51 999 000 000"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('user-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveUser(${id})">
+          ${u?'Actualizar usuario':'Crear usuario'}
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function saveUser(id) {
+  const name  = document.getElementById('u-name').value.trim();
+  const email = document.getElementById('u-email')?.value?.trim();
+  if(!name){ toast('El nombre es obligatorio.','error'); return; }
+  if(!id && !email){ toast('El correo es obligatorio.','error'); return; }
+  if(!id && STATE.users.find(u=>u.email===email)){ toast('Este correo ya está registrado.','error'); return; }
+
+  const role  = document.getElementById('u-role').value;
+  const spec  = document.getElementById('u-spec').value;
+  const comp  = document.getElementById('u-comp').value;
+  const phone = document.getElementById('u-phone').value;
+
+  if(id) {
+    const idx = STATE.users.findIndex(u=>u.id===id);
+    STATE.users[idx]={...STATE.users[idx],name,role,specialty:spec,company:comp,phone};
+    toast('Usuario actualizado.');
+  } else {
+    STATE.users.push({id:STATE.nextId.user++,name,email,role,specialty:spec,company:comp,phone,active:true});
+    toast('Usuario creado. Comunique las credenciales de forma segura.');
+  }
+  closeModal('user-modal');
+  renderUsers();
+}
+
+function toggleUser(id) {
+  const idx = STATE.users.findIndex(u=>u.id===id);
+  if(STATE.users[idx].id===STATE.currentUser?.id){ toast('No puede desactivar su propia cuenta.','error'); return; }
+  STATE.users[idx].active = !STATE.users[idx].active;
+  toast(STATE.users[idx].active?'Usuario activado.':'Usuario desactivado.');
+  renderUsers();
+}
+
+// ═══════════════════════════════════════════════════
+// MODAL UTILS
+// ═══════════════════════════════════════════════════
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if(el) el.remove();
+}
+
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') document.getElementById('modal-container').innerHTML=''; });
+</script>
+</body>
+</html>

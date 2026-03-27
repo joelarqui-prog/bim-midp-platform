@@ -13,9 +13,7 @@ function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true
 
 var PHASES=[
   {key:'riba3',label:'RIBA 3',sub:'Presentacion 1',color:'#3b82f6'},
-  {key:'riba4',label:'RIBA 4',sub:'Presentacion 2',color:'#8b5cf6'},
-  {key:'const',label:'Construccion',sub:'Presentacion 3',color:'#f59e0b'},
-  {key:'pm',label:'Puesta en Marcha',sub:'',color:'#10b981'}
+  {key:'riba4',label:'RIBA 4',sub:'Presentacion 2',color:'#8b5cf6'}
 ];
 var PERM_CONFIG=[
   {key:'can_create_deliverables',label:'Crear entregables'},
@@ -231,24 +229,27 @@ function loadDeliverables(){
       return;
     }
 
-    var html='<div class="midp-scroll" style="overflow-x:scroll;overflow-y:visible;border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);position:relative;">'+
-      '<table class="tbl" style="min-width:1500px"><thead>'+
+    // 2 phases x 4 cols = 8 phase cols + code+name+status+format+bim = 13 cols total — fits screen
+    var html='<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:hidden">'+
+      '<table class="tbl" style="width:100%;table-layout:fixed"><thead>'+
       '<tr>'+
-      '<th rowspan="2" style="min-width:160px;position:sticky;left:0;z-index:3;background:var(--bg);box-shadow:2px 0 4px rgba(0,0,0,.06)">Codigo</th>'+
-      '<th rowspan="2" style="min-width:200px;position:sticky;left:160px;z-index:3;background:var(--bg);box-shadow:2px 0 4px rgba(0,0,0,.06)">Nombre</th>'+
-      '<th rowspan="2">Estado</th>'+
-      '<th rowspan="2">Formato</th>'+
-      '<th rowspan="2">Modelo BIM</th>'+
+      '<th style="width:22%">Codigo / Paquete</th>'+
+      '<th style="width:18%">Nombre</th>'+
+      '<th style="width:9%">Estado</th>'+
+      '<th style="width:6%">Formato</th>'+
+      '<th style="width:10%">Modelo BIM</th>'+
       PHASES.map(function(ph){
-        return '<th colspan="4" style="text-align:center;background:'+ph.color+'18;color:'+ph.color+';border-left:2px solid '+ph.color+'50">'+ph.label+(ph.sub?' · '+ph.sub:'')+'</th>';
+        return '<th colspan="4" style="text-align:center;background:'+ph.color+'15;color:'+ph.color+';border-left:2px solid '+ph.color+'40;font-size:10px">'+ph.label+' · '+ph.sub+'</th>';
       }).join('')+
-      (canEdit||canDel?'<th rowspan="2">Acc.</th>':'')+
+      (canEdit||canDel?'<th style="width:5%">Acc.</th>':'')+
       '</tr><tr>'+
+      '<th colspan="5" style="background:var(--bg)"></th>'+
       PHASES.map(function(ph){
         return ['LOD','LOI','Fecha','Resp.'].map(function(h){
-          return '<th style="font-size:9px;background:'+ph.color+'10;'+(h==='LOD'?'border-left:2px solid '+ph.color+'40':'')+'">'+ h+'</th>';
+          return '<th style="font-size:9px;background:'+ph.color+'08;'+(h==='LOD'?'border-left:2px solid '+ph.color+'30':'')+';width:'+(h==='Fecha'?'6':'4')+'%">'+h+'</th>';
         }).join('');
       }).join('')+
+      (canEdit||canDel?'<th style="background:var(--bg)"></th>':'')+
       '</tr></thead><tbody>'+
       items.map(function(d){
         var statusCell=canStatus
@@ -266,11 +267,11 @@ function loadDeliverables(){
             '<td style="font-size:10px;color:var(--text3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+resp+'">'+resp+'</td>';
         }).join('');
         return '<tr>'+
-          '<td style="position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:2px 0 4px rgba(0,0,0,.04)">'+
-          '<span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
+          '<td style="overflow:hidden">'+
+          '<span class="code-chip" style="font-size:8px;word-break:break-all;white-space:normal;line-height:1.4">'+d.code+'</span>'+
           (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:2px">Pkg: '+d.work_package+'</div>':'')+
           '</td>'+
-          '<td style="position:sticky;left:160px;z-index:2;background:var(--surface);box-shadow:2px 0 4px rgba(0,0,0,.04)"><div style="max-width:200px">'+
+          '<td><div style="overflow:hidden">'+
           '<div style="font-weight:600;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.name+'</div>'+
           (d.description?'<div style="font-size:9px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.description+'</div>':'')+
           '</div></td>'+
@@ -288,7 +289,7 @@ function loadDeliverables(){
           '</tr>';
       }).join('')+
       '</tbody></table>'+
-      '<div style="padding:8px 14px;background:var(--bg);font-size:10px;color:var(--text3);border-top:1px solid var(--border2)">'+
+      '<div style="padding:8px 14px;background:var(--bg);font-size:10px;color:var(--text3);border-top:1px solid var(--border2);border-radius:0 0 var(--rl) var(--rl)">'+
       items.length+' entregable(s) mostrado(s) de '+total+' totales</div></div>';
     document.getElementById('del-table').innerHTML=html;
   }).catch(function(e){

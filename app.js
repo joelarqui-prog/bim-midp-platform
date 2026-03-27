@@ -231,8 +231,7 @@ function loadDeliverables(){
       return;
     }
 
-    var html='<div style="overflow-x:auto;border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);'+
-      '-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent;">'+
+    var html='<div class="midp-scroll" style="overflow-x:scroll;overflow-y:visible;border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);position:relative;">'+
       '<table class="tbl" style="min-width:1500px"><thead>'+
       '<tr>'+
       '<th rowspan="2" style="min-width:160px;position:sticky;left:0;z-index:3;background:var(--bg);box-shadow:2px 0 4px rgba(0,0,0,.06)">Codigo</th>'+

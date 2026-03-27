@@ -377,35 +377,62 @@ function buildCode(fields){
 // AUTH
 // ═══════════════════════════════════════════════════
 async function doLogin(){
-  const email=document.getElementById('login-email').value.trim();
-  const pass=document.getElementById('login-pass').value;
-  const errEl=document.getElementById('login-error');
-  const btn=document.getElementById('login-btn');
-  errEl.style.display='none'; btn.disabled=true; btn.textContent='Verificando...';
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('login-btn');
+
+  function showErr(msg){ errEl.textContent=msg; errEl.style.display='block'; btn.disabled=false; btn.textContent='Iniciar sesión'; }
+
+  if(!email){ showErr('Ingresa tu correo electrónico.'); return; }
+  if(!pass){  showErr('Ingresa tu contraseña.');         return; }
+
+  errEl.style.display='none';
+  btn.disabled=true;
+  btn.textContent='Verificando...';
+
   try {
-    const users=await sbGet('users',`?email=eq.${encodeURIComponent(email)}&is_active=eq.true&select=*`);
-    if(!users.length) throw new Error('Correo o contraseña incorrectos.');
-    const user=users[0];
-    const isValid=await sbRpc('verify_password',{input_password:pass,stored_hash:user.password_hash});
-    if(!isValid) throw new Error('Correo o contraseña incorrectos.');
-    await sbPatch('users',`id=eq.${user.id}`,{last_login_at:new Date().toISOString()});
-    APP.user=user;
-    const projects=await sbGet('projects','?is_active=eq.true&order=created_at.asc&limit=1');
-    APP.project=projects[0]||null;
-    if(APP.project) APP.schemas=await sbGet('field_schemas',`?project_id=eq.${APP.project.id}&is_active=eq.true&order=code_order.asc`);
-    APP.users=await sbGet('users','?select=*&order=full_name.asc');
-    document.getElementById('login-page').style.display='none';
-    document.getElementById('app').style.display='flex';
-    document.getElementById('sb-avatar').textContent=initials(user.full_name);
-    document.getElementById('sb-uname').textContent=user.full_name;
-    const rc=ROLE_CFG[user.role]||ROLE_CFG.specialist;
-    document.getElementById('sb-role-badge').className=`badge ${rc.cls}`;
-    document.getElementById('sb-role-badge').textContent=rc.label;
-    if(APP.project){ document.getElementById('sb-proj-code').textContent=APP.project.code; document.getElementById('sb-proj-name').textContent=APP.project.name; }
-    nav('deliverables',document.querySelector('.sb-item'));
+    // 1. Buscar usuario
+    const users = await sbGet('users', `?email=eq.${encodeURIComponent(email)}&is_active=eq.true&select=*`);
+    if(!users || users.length === 0){ showErr('Correo o contraseña incorrectos.'); return; }
+    const user = users[0];
+
+    // 2. Verificar contraseña
+    let isValid = false;
+    try {
+      isValid = await sbRpc('verify_password', {input_password: pass, stored_hash: user.password_hash});
+    } catch(rpcErr){
+      showErr('Error al verificar contraseña: ' + rpcErr.message + '. Verifica que ejecutaste las funciones SQL en Supabase.');
+      return;
+    }
+    if(!isValid){ showErr('Correo o contraseña incorrectos.'); return; }
+
+    // 3. Cargar datos
+    btn.textContent='Cargando...';
+    sbPatch('users', `id=eq.${user.id}`, {last_login_at: new Date().toISOString()}).catch(()=>{});
+    APP.user = user;
+    const projects = await sbGet('projects', '?is_active=eq.true&order=created_at.asc&limit=1');
+    APP.project = projects[0] || null;
+    if(APP.project) APP.schemas = await sbGet('field_schemas', `?project_id=eq.${APP.project.id}&is_active=eq.true&order=code_order.asc`);
+    APP.users = await sbGet('users', '?select=*&order=full_name.asc');
+
+    // 4. Mostrar app
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('sb-avatar').textContent = initials(user.full_name);
+    document.getElementById('sb-uname').textContent  = user.full_name;
+    const rc = ROLE_CFG[user.role] || ROLE_CFG.specialist;
+    document.getElementById('sb-role-badge').className  = `badge ${rc.cls}`;
+    document.getElementById('sb-role-badge').textContent = rc.label;
+    if(APP.project){
+      document.getElementById('sb-proj-code').textContent = APP.project.code;
+      document.getElementById('sb-proj-name').textContent = APP.project.name;
+    }
+    nav('deliverables', document.querySelector('.sb-item'));
+
   } catch(err){
-    errEl.textContent=err.message||'Error de conexión.'; errEl.style.display='block';
-  } finally { btn.disabled=false; btn.textContent='Iniciar sesión'; }
+    showErr('Error de conexión: ' + (err.message || JSON.stringify(err)) + '. Verifica tu conexión a internet.');
+  }
 }
 
 function doLogout(){

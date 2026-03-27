@@ -12,6 +12,7 @@ var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can
 function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true;return !!(APP.user.permissions||DEFAULT_PERMS)[a];}
 
 var PHASES=[
+  {key:'riba2',label:'RIBA 2',sub:'Presentacion 0',color:'#06b6d4'},
   {key:'riba3',label:'RIBA 3',sub:'Presentacion 1',color:'#3b82f6'},
   {key:'riba4',label:'RIBA 4',sub:'Presentacion 2',color:'#8b5cf6'}
 ];
@@ -287,24 +288,24 @@ function loadDeliverables(){
       return;
     }
 
-    // 2 phases x 4 cols = 8 phase cols + code+name+status+format+bim = 13 cols total — fits screen
+    // 3 phases x 4 cols = 12 phase cols + code+name+status+format+bim = 17 cols total
     var html='<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:hidden">'+
       '<table class="tbl" style="width:100%;table-layout:fixed"><thead>'+
       '<tr>'+
-      '<th style="width:22%">Codigo / Paquete</th>'+
-      '<th style="width:18%">Nombre</th>'+
-      '<th style="width:9%">Estado</th>'+
-      '<th style="width:6%">Formato</th>'+
-      '<th style="width:10%">Modelo BIM</th>'+
+      '<th style="width:18%">Codigo / Paquete</th>'+
+      '<th style="width:14%">Nombre</th>'+
+      '<th style="width:8%">Estado</th>'+
+      '<th style="width:5%">Fmt.</th>'+
+      '<th style="width:8%">Modelo BIM</th>'+
       PHASES.map(function(ph){
         return '<th colspan="4" style="text-align:center;background:'+ph.color+'15;color:'+ph.color+';border-left:2px solid '+ph.color+'40;font-size:10px">'+ph.label+' · '+ph.sub+'</th>';
       }).join('')+
-      (canEdit||canDel?'<th style="width:5%">Acc.</th>':'')+
+      (canEdit||canDel?'<th style="width:4%">Acc.</th>':'')+
       '</tr><tr>'+
       '<th colspan="5" style="background:var(--bg)"></th>'+
       PHASES.map(function(ph){
         return ['LOD','LOI','Fecha','Resp.'].map(function(h){
-          return '<th style="font-size:9px;background:'+ph.color+'08;'+(h==='LOD'?'border-left:2px solid '+ph.color+'30':'')+';width:'+(h==='Fecha'?'6':'4')+'%">'+h+'</th>';
+          return '<th style="font-size:9px;background:'+ph.color+'08;'+(h==='LOD'?'border-left:2px solid '+ph.color+'30':'')+';width:'+(h==='Fecha'?'5':'3')+'%">'+h+'</th>';
         }).join('');
       }).join('')+
       (canEdit||canDel?'<th style="background:var(--bg)"></th>':'')+
@@ -551,14 +552,14 @@ function deleteDeliverable(id){
 function exportCSV(){
   sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc').then(function(items){
     var headers=['Codigo','Nombre','Estado','Formato','Escala','Modelo BIM','Paquete',
-      'RIBA3 LOD','RIBA3 LOI','RIBA3 Fecha','RIBA4 LOD','RIBA4 LOI','RIBA4 Fecha',
-      'CONST LOD','CONST LOI','CONST Fecha','PM LOD','PM LOI','PM Fecha'];
+      'RIBA2 LOD','RIBA2 LOI','RIBA2 Fecha',
+      'RIBA3 LOD','RIBA3 LOI','RIBA3 Fecha',
+      'RIBA4 LOD','RIBA4 LOI','RIBA4 Fecha'];
     var rows=items.map(function(d){return [
       d.code,'"'+(d.name||'')+'"',d.status,d.file_format||'',d.scale||'',d.bim_model_ref||'',d.work_package||'',
+      d.riba2_lod||'',d.riba2_loi||'',d.riba2_delivery_date||'',
       d.riba3_lod||'',d.riba3_loi||'',d.riba3_delivery_date||'',
-      d.riba4_lod||'',d.riba4_loi||'',d.riba4_delivery_date||'',
-      d.const_lod||'',d.const_loi||'',d.const_delivery_date||'',
-      d.pm_lod||'',d.pm_loi||'',d.pm_delivery_date||''
+      d.riba4_lod||'',d.riba4_loi||'',d.riba4_delivery_date||''
     ];});
     var csv='\uFEFF'+[headers].concat(rows).map(function(r){return r.join(',');}).join('\n');
     var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
@@ -573,10 +574,9 @@ function exportMIDP(){
       'N Ref','Titulo','Descripcion','Paquete','Formato','Tamano','Escala','Modelo BIM','Predecesores',
       'Proyecto','Originador','Fase Programa','Area Funcional','Fase Proyecto',
       'Volumen','Nivel','Disciplina','Tipo','Secuencial','Codigo','Estado',
+      'RIBA2 Resp','RIBA2 LOD','RIBA2 LOI','RIBA2 Doc','RIBA2 T.Prod','RIBA2 Fecha',
       'RIBA3 Resp','RIBA3 LOD','RIBA3 LOI','RIBA3 Doc','RIBA3 T.Prod','RIBA3 Fecha',
-      'RIBA4 Resp','RIBA4 LOD','RIBA4 LOI','RIBA4 Doc','RIBA4 T.Prod','RIBA4 Fecha',
-      'CONST Resp','CONST LOD','CONST LOI','CONST Doc','CONST T.Prod','CONST Fecha',
-      'PM Resp','PM LOD','PM LOI','PM Doc','PM T.Prod','PM Fecha'
+      'RIBA4 Resp','RIBA4 LOD','RIBA4 LOI','RIBA4 Doc','RIBA4 T.Prod','RIBA4 Fecha'
     ];
     var rows=items.map(function(d,i){
       var fv=d.field_values||{};
@@ -586,10 +586,9 @@ function exportMIDP(){
         fv.proyecto||'',fv.originador||'',fv.fase_programa||'',fv.area_funcional||'',
         fv.fase_proyecto||'',fv.volumen||'',fv.nivel||'',fv.disciplina||'',
         fv.tipo_documento||'',fv.secuencial||'',d.code,d.status,
+        d.riba2_responsible||'',d.riba2_lod||'',d.riba2_loi||'',d.riba2_doc_assoc||'',d.riba2_prod_time||'',d.riba2_delivery_date||'',
         d.riba3_responsible||'',d.riba3_lod||'',d.riba3_loi||'',d.riba3_doc_assoc||'',d.riba3_prod_time||'',d.riba3_delivery_date||'',
-        d.riba4_responsible||'',d.riba4_lod||'',d.riba4_loi||'',d.riba4_doc_assoc||'',d.riba4_prod_time||'',d.riba4_delivery_date||'',
-        d.const_responsible||'',d.const_lod||'',d.const_loi||'',d.const_doc_assoc||'',d.const_prod_time||'',d.const_delivery_date||'',
-        d.pm_responsible||'',d.pm_lod||'',d.pm_loi||'',d.pm_doc_assoc||'',d.pm_prod_time||'',d.pm_delivery_date||''
+        d.riba4_responsible||'',d.riba4_lod||'',d.riba4_loi||'',d.riba4_doc_assoc||'',d.riba4_prod_time||'',d.riba4_delivery_date||''
       ];
     });
     var csv='\uFEFF'+[headers].concat(rows).map(function(r){return r.join(',');}).join('\n');

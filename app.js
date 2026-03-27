@@ -91,25 +91,34 @@ function handleLogin(){
             })
             .then(function(r){
               APP.schemas=r[0];APP.users=r[1];
-              document.getElementById('login-page').style.display='none';
-              document.getElementById('app').style.display='flex';
-              document.getElementById('sb-avatar').textContent=initials(user.full_name);
-              document.getElementById('sb-uname').textContent=user.full_name;
-              var rc=ROLE_CFG[user.role]||ROLE_CFG.specialist;
-              document.getElementById('sb-role-badge').className='badge '+rc.cls;
-              document.getElementById('sb-role-badge').textContent=rc.label;
-              if(APP.project){
-                document.getElementById('sb-proj-code').textContent=APP.project.code;
-                document.getElementById('sb-proj-name').textContent=APP.project.name;
-              }
-              nav('deliverables',document.querySelector('.sb-item'));
+              // Guardar sesion en localStorage
+              try{localStorage.setItem('midp_session',JSON.stringify({
+                userId:user.id,email:user.email,savedAt:Date.now()
+              }));}catch(e){}
+              showApp(user);
             });
         });
     }).catch(function(e){showErr('Error: '+e.message);});
 }
 
+function showApp(user){
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('sb-avatar').textContent=initials(user.full_name);
+  document.getElementById('sb-uname').textContent=user.full_name;
+  var rc=ROLE_CFG[user.role]||ROLE_CFG.specialist;
+  document.getElementById('sb-role-badge').className='badge '+rc.cls;
+  document.getElementById('sb-role-badge').textContent=rc.label;
+  if(APP.project){
+    document.getElementById('sb-proj-code').textContent=APP.project.code;
+    document.getElementById('sb-proj-name').textContent=APP.project.name;
+  }
+  nav('deliverables',document.querySelector('.sb-item'));
+}
+
 function doLogout(){
   APP.user=null;APP.project=null;APP.schemas=[];APP.fieldFilters={};
+  try{localStorage.removeItem('midp_session');}catch(e){}
   document.getElementById('app').style.display='none';
   document.getElementById('login-page').style.display='flex';
   document.getElementById('login-email').value='';
@@ -119,7 +128,56 @@ function doLogout(){
 document.addEventListener('DOMContentLoaded',function(){
   var lp=document.getElementById('login-pass');
   if(lp)lp.addEventListener('keydown',function(e){if(e.key==='Enter')handleLogin();});
+
+  // Intentar restaurar sesion guardada
+  try{
+    var saved=localStorage.getItem('midp_session');
+    if(saved){
+      var session=JSON.parse(saved);
+      // Sesion expira despues de 8 horas
+      var EIGHT_HOURS=8*60*60*1000;
+      if(session.userId&&(Date.now()-session.savedAt)<EIGHT_HOURS){
+        // Restaurar sesion silenciosamente
+        restoreSession(session.userId);
+        return;
+      }else{
+        localStorage.removeItem('midp_session');
+      }
+    }
+  }catch(e){}
 });
+
+function restoreSession(userId){
+  document.getElementById('login-btn')&&(document.getElementById('login-btn').textContent='Restaurando sesion...');
+  sbGet('users','?id=eq.'+userId+'&is_active=eq.true&select=*')
+    .then(function(users){
+      if(!users||!users.length){
+        localStorage.removeItem('midp_session');
+        return;
+      }
+      var user=users[0];
+      APP.user=user;
+      return sbGet('projects','?is_active=eq.true&order=created_at.asc&limit=1')
+        .then(function(ps){
+          APP.project=ps[0]||null;
+          var p2=APP.project
+            ?sbGet('field_schemas','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code_order.asc')
+            :Promise.resolve([]);
+          return Promise.all([p2,sbGet('users','?select=*&order=full_name.asc')]);
+        })
+        .then(function(r){
+          APP.schemas=r[0];APP.users=r[1];
+          // Renovar timestamp de sesion
+          try{localStorage.setItem('midp_session',JSON.stringify({
+            userId:user.id,email:user.email,savedAt:Date.now()
+          }));}catch(e){}
+          showApp(user);
+        });
+    })
+    .catch(function(){
+      localStorage.removeItem('midp_session');
+    });
+}
 
 // ── NAV ──
 var BREAD={deliverables:'Entregables MIDP',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos'};

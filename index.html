@@ -215,14 +215,10 @@ textarea.input{resize:vertical;min-height:70px}
     <p class="login-sub">BIM Platform · ISO 19650</p>
     <div class="login-error" id="login-error"></div>
     <label class="login-label">Correo electrónico</label>
-    <input type="email" id="login-email" class="login-input" placeholder="usuario@empresa.com" value="admin@midp.bim">
+    <input type="email" id="login-email" class="login-input" placeholder="usuario@empresa.com" >
     <label class="login-label">Contraseña</label>
-    <input type="password" id="login-pass" class="login-input" placeholder="••••••••" value="Admin@2025">
+    <input type="password" id="login-pass" class="login-input" placeholder="••••••••" >
     <button class="login-btn" id="login-btn" onclick="doLogin()">Iniciar sesión</button>
-    <div class="login-demo">
-      <p>Credenciales de demo</p>
-      <code>admin@midp.bim / Admin@2025</code>
-    </div>
   </div>
 </div>
 
@@ -288,7 +284,7 @@ textarea.input{resize:vertical;min-height:70px}
 <div class="toast" id="toast"></div>
 <div id="modal-container"></div>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 // ═══════════════════════════════════════════════════
 // SUPABASE
 // ═══════════════════════════════════════════════════
@@ -1020,11 +1016,4 @@ async function saveUser(id){
       const hash=await sbRpc('hash_password',{input_password:pass});
       const newPerms={...DEFAULT_PERMS};
       await sbPost('users',{...payload,email,password_hash:hash,is_active:true,permissions:newPerms});
-      toast('Usuario creado. Permisos desactivados por defecto — actívalos en la pantalla de permisos.');
-    }
-    closeModal('user-modal'); renderUsers();
-  } catch(err){ toast(err.message,'error'); btn.disabled=false; btn.textContent=id?'Actualizar':'Crear usuario'; }
-}
-</script>
-</body>
-</html>
+      toast('Usuario creado. Permisos desactivados por defecto — actívalos 

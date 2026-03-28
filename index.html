@@ -58,6 +58,55 @@ textarea.input{resize:vertical;min-height:70px}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--text);color:#fff;padding:10px 16px;border-radius:var(--r);font-size:13px;font-weight:500;z-index:999;transform:translateY(60px);transition:transform .3s;box-shadow:0 4px 20px rgba(0,0,0,.2)}.toast.show{transform:translateY(0)}.toast.success{background:var(--green)}.toast.error{background:var(--red)}
 .online-dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px;animation:pulse 2s infinite}.midp-scroll{scrollbar-width:auto!important;-ms-overflow-style:scrollbar!important}.midp-scroll::-webkit-scrollbar{height:10px!important;display:block!important}.midp-scroll::-webkit-scrollbar-track{background:#e2e8f0!important;border-radius:0 0 8px 8px}.midp-scroll::-webkit-scrollbar-thumb{background:#475569!important;border-radius:99px!important;border:2px solid #e2e8f0!important}.midp-scroll::-webkit-scrollbar-thumb:hover{background:#1e293b!important}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* MIDP Table — scroll horizontal con columnas fijas */
+.midp-tbl-wrap{
+  overflow-x:auto;
+  overflow-y:visible;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:thick;
+  scrollbar-color:#64748b #e2e8f0;
+  border-radius:0;
+}
+.midp-tbl-wrap::-webkit-scrollbar{
+  height:12px;
+  display:block;
+}
+.midp-tbl-wrap::-webkit-scrollbar-track{
+  background:#e2e8f0;
+  border-radius:0 0 var(--rl) var(--rl);
+}
+.midp-tbl-wrap::-webkit-scrollbar-thumb{
+  background:#64748b;
+  border-radius:6px;
+  border:2px solid #e2e8f0;
+  min-width:40px;
+}
+.midp-tbl-wrap::-webkit-scrollbar-thumb:hover{
+  background:#334155;
+}
+.midp-tbl{
+  width:max-content;
+  min-width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+.midp-tbl th,.midp-tbl td{
+  white-space:nowrap;
+}
+.sticky-col{
+  position:sticky;
+  z-index:2;
+  background:var(--bg);
+  box-shadow:2px 0 6px rgba(0,0,0,.08);
+}
+.midp-tbl tbody tr:hover .sticky-col{
+  background:#f8fafc;
+}
+.midp-tbl thead .sticky-col{
+  z-index:4 !important;
+  background:var(--bg) !important;
+}
 </style>
 </head>
 <body>
@@ -116,6 +165,6 @@ textarea.input{resize:vertical;min-height:70px}
 
 <div class="toast" id="toast"></div>
 <div id="modal-container"></div>
-<script src="app.js?v=1774715442"></script>
+<script src="app.js?v=1774716273"></script>
 </body>
 </html>

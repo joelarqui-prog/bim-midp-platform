@@ -269,16 +269,21 @@ function loadDeliverables(){
     // Campos de fase visibles — LOD, LOI y fecha solo (siempre los mismos 3 para la vista)
     var phaseColKeys=['lod','loi','delivery_date'];
 
-    // Calcular anchos dinamicamente
-    var totalCols=3+visGeneral.length+(PHASE_GROUPS.length*3)+(canEdit||canDel?1:0);
+    // Sticky col widths
+    var W={code:170,name:160,status:105,general:90,lod:48,loi:44,fecha:80,acc:56};
+    var stickyLeft2=W.code; // where Name starts
 
-    var html='<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:hidden">'+
-      '<table class="tbl" style="width:100%;table-layout:fixed"><thead><tr>'+
-      '<th style="width:18%;min-width:140px">Codigo</th>'+
-      '<th style="width:14%;min-width:120px">Nombre</th>'+
-      '<th style="width:8%;min-width:80px">Estado</th>'+
+    var html=
+      '<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface)">'+
+      '<div class="midp-tbl-wrap">'+
+      '<table class="tbl midp-tbl"><thead><tr>'+
+      // Sticky col 1: Codigo
+      '<th class="sticky-col" style="left:0;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
+      // Sticky col 2: Nombre
+      '<th class="sticky-col" style="left:'+stickyLeft2+'px;min-width:'+W.name+'px;max-width:'+W.name+'px;z-index:4">Nombre</th>'+
+      '<th style="min-width:'+W.status+'px">Estado</th>'+
       visGeneral.map(function(s){
-        return '<th style="width:7%;min-width:60px;font-size:10px">'+s.name+'</th>';
+        return '<th style="min-width:'+W.general+'px;white-space:nowrap;font-size:9px">'+s.name+'</th>';
       }).join('')+
       PHASE_GROUPS.map(function(ph){
         var vis=visiblePhaseSchemas(ph.key);
@@ -287,20 +292,24 @@ function loadDeliverables(){
         var hasFecha=vis.some(function(s){return s.key===ph.key+'_delivery_date';});
         var span=(hasLOD?1:0)+(hasLOI?1:0)+(hasFecha?1:0);
         if(!span)return '';
-        return '<th colspan="'+span+'" style="text-align:center;background:'+ph.color+'15;color:'+ph.color+';border-left:2px solid '+ph.color+'40;font-size:10px">'+ph.label+' · '+ph.sub+'</th>';
+        return '<th colspan="'+span+'" style="text-align:center;background:'+ph.color+'15;color:'+ph.color+';border-left:2px solid '+ph.color+'50;font-size:10px;white-space:nowrap">'+
+          ph.label+' · '+ph.sub+'</th>';
       }).join('')+
-      (canEdit||canDel?'<th style="width:5%">Acc.</th>':'')+
+      (canEdit||canDel?'<th style="min-width:'+W.acc+'px">Acc.</th>':'')+
       '</tr><tr>'+
-      '<th colspan="'+(2+visGeneral.length+1)+'" style="background:var(--bg)"></th>'+
+      '<th class="sticky-col" style="left:0;background:var(--bg);z-index:4"></th>'+
+      '<th class="sticky-col" style="left:'+stickyLeft2+'px;background:var(--bg);z-index:4"></th>'+
+      '<th style="background:var(--bg)"></th>'+
+      visGeneral.map(function(){return '<th style="background:var(--bg)"></th>';}).join('')+
       PHASE_GROUPS.map(function(ph){
         var vis=visiblePhaseSchemas(ph.key);
         var cells='';
         if(vis.some(function(s){return s.key===ph.key+'_lod';}))
-          cells+='<th style="font-size:9px;background:'+ph.color+'08;border-left:2px solid '+ph.color+'30">LOD</th>';
+          cells+='<th style="font-size:9px;background:'+ph.color+'10;min-width:'+W.lod+'px;border-left:2px solid '+ph.color+'40;white-space:nowrap">LOD</th>';
         if(vis.some(function(s){return s.key===ph.key+'_loi';}))
-          cells+='<th style="font-size:9px;background:'+ph.color+'08">LOI</th>';
+          cells+='<th style="font-size:9px;background:'+ph.color+'10;min-width:'+W.loi+'px;white-space:nowrap">LOI</th>';
         if(vis.some(function(s){return s.key===ph.key+'_delivery_date';}))
-          cells+='<th style="font-size:9px;background:'+ph.color+'08">Fecha</th>';
+          cells+='<th style="font-size:9px;background:'+ph.color+'10;min-width:'+W.fecha+'px;white-space:nowrap">Fecha entrega</th>';
         return cells;
       }).join('')+
       (canEdit||canDel?'<th style="background:var(--bg)"></th>':'')+
@@ -338,12 +347,13 @@ function loadDeliverables(){
         }).join('');
 
         return '<tr>'+
-          '<td style="overflow:hidden">'+
-          '<span class="code-chip" style="font-size:8px;word-break:break-all;white-space:normal;line-height:1.4">'+d.code+'</span>'+
-          (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px">'+d.work_package+'</div>':'')+
+          '<td class="sticky-col" style="left:0;background:var(--surface)">'+
+          '<span class="code-chip" style="font-size:8px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>'+
+          (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.work_package+'</div>':'')+
           '</td>'+
-          '<td><div style="font-weight:600;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.name+'</div>'+
-          (d.description?'<div style="font-size:9px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+d.description+'</div>':'')+
+          '<td class="sticky-col" style="left:'+stickyLeft2+'px;background:var(--surface)">'+
+          '<div style="font-weight:600;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px" title="'+d.name+'">'+d.name+'</div>'+
+          (d.description?'<div style="font-size:9px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.description+'</div>':'')+
           '</td>'+
           '<td>'+statusCell+'</td>'+
           generalCells+phaseCells+
@@ -354,6 +364,7 @@ function loadDeliverables(){
           '</tr>';
       }).join('')+
       '</tbody></table>'+
+      '</div>'+ // close midp-tbl-wrap
       '<div style="padding:8px 14px;background:var(--bg);font-size:10px;color:var(--text3);border-top:1px solid var(--border2);border-radius:0 0 var(--rl) var(--rl)">'+
       items.length+' entregable(s) mostrado(s) de '+total+' totales · Supabase</div></div>';
     document.getElementById('del-table').innerHTML=html;

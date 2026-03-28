@@ -342,8 +342,8 @@ function renderDeliverables(){
     '<div class="kpi-grid" id="kpi-area"><div class="loading"><div class="spinner"></div></div></div>'+
     '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">'+
     '<div class="search-wrap" style="max-width:180px">'+
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'+
-    '<input class="input" placeholder="Buscar codigo..." oninput="APP.search=this.value;loadDeliverables()"></div>'+
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'+
+    '<input class="input" style="padding-left:32px" placeholder="Buscar codigo..." oninput="APP.search=this.value;loadDeliverables()"></div>'+
     '<select class="input" style="width:115px;font-size:11px" onchange="APP.statusFilter=this.value;loadDeliverables()">'+
     '<option value="">Todos estados</option>'+
     Object.entries(STATUS_CFG).map(function(e){return '<option value="'+e[0]+'">'+e[1].label+'</option>';}).join('')+

@@ -133,7 +133,7 @@ function loadUserProjects(user){
       return;
     }
     var html=projects.map(function(p){
-      return '<div class="proj-item" onclick="selectProject(\""+p.id+"\")" data-pid="'+p.id+'">'+
+      return '<div class="proj-item" data-pid="'+p.id+'" style="cursor:pointer">'+
         '<div class="proj-item-icon"><svg viewBox="0 0 24 24" fill="white" width="20" height="20"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>'+
         '<div style="min-width:0;flex:1">'+
         '<div class="proj-item-code">'+p.code+'</div>'+
@@ -143,11 +143,20 @@ function loadUserProjects(user){
         '<div class="proj-item-arrow">&#8250;</div></div>';
     }).join('');
     if(user.role==='admin'){
-      html+='<button class="proj-new-btn" onclick="openNewProjectModal()">'+
+      html+='<button class="proj-new-btn" id="ps-new-proj-btn">'+
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>'+
         'Nuevo proyecto</button>';
     }
     psEl.innerHTML=html;
+    // Attach click events after DOM is ready
+    psEl.querySelectorAll('.proj-item[data-pid]').forEach(function(el){
+      el.addEventListener('click',function(){
+        selectProject(el.dataset.pid);
+      });
+    });
+    // Also attach new project button if present
+    var newBtn=psEl.querySelector('.proj-new-btn');
+    if(newBtn)newBtn.onclick=openNewProjectModal;
   }).catch(function(e){
     psEl.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:12px">Error: '+e.message+'</div>';
   });

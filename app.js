@@ -341,9 +341,9 @@ function renderDeliverables(){
     '<p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div>'+
     '<div class="kpi-grid" id="kpi-area"><div class="loading"><div class="spinner"></div></div></div>'+
     '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">'+
-    '<div class="search-wrap" style="max-width:180px">'+
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'+
-    '<input class="input" style="padding-left:32px" placeholder="Buscar codigo..." oninput="APP.search=this.value;loadDeliverables()"></div>'+
+    '<div style="position:relative;max-width:180px">'+
+    '<input class="input" style="padding-left:30px" placeholder="Buscar codigo..." oninput="APP.search=this.value;loadDeliverables()">'+
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>'+
     '<select class="input" style="width:115px;font-size:11px" onchange="APP.statusFilter=this.value;loadDeliverables()">'+
     '<option value="">Todos estados</option>'+
     Object.entries(STATUS_CFG).map(function(e){return '<option value="'+e[0]+'">'+e[1].label+'</option>';}).join('')+
@@ -1046,69 +1046,153 @@ function renderSchemas(){
     document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Acceso restringido</div><div class="empty-desc">Solo el administrador puede configurar campos.</div></div>';
     return;
   }
-  document.getElementById('topbar-actions').innerHTML='';
+  document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-sm btn-primary" onclick="openNewHitoModal()">+ Nuevo hito</button>';
   document.getElementById('content').innerHTML=loading();
 
   sbGet('field_schemas','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=field_order.asc,code_order.asc').then(function(schemas){
     APP.schemas=schemas;
 
-    var groups=[
-      {id:'code',   label:'Codificacion UKHA',     color:'var(--brand)',   desc:'Campos que forman el codigo del entregable'},
-      {id:'general',label:'Informacion general',   color:'var(--slate)',   desc:'Campos del contenedor de informacion'},
-      {id:'riba2',  label:'RIBA 2 - Presentacion 0',color:'#06b6d4',      desc:'Campos de la fase RIBA 2'},
-      {id:'riba3',  label:'RIBA 3 - Presentacion 1',color:'#3b82f6',      desc:'Campos de la fase RIBA 3'},
-      {id:'riba4',  label:'RIBA 4 - Presentacion 2',color:'#8b5cf6',      desc:'Campos de la fase RIBA 4'}
+    // Fixed groups
+    var fixedGroups=[
+      {id:'code',   label:'Codificacion',        color:'var(--brand)', desc:'Campos que forman el codigo del entregable', fixed:true},
+      {id:'general',label:'Informacion general', color:'var(--slate)', desc:'Metadata del contenedor de informacion',     fixed:false}
     ];
 
-    var html='<div class="page-header"><div><h1 class="page-title">Config. de campos</h1>'+
-      '<p class="page-sub">Gestiona que campos aparecen en los entregables y si son visibles en la tabla</p></div></div>';
-
-    groups.forEach(function(g){
-      var fields=schemas.filter(function(s){return s.field_group===g.id;}).sort(function(a,b){
-        return g.id==='code'?(a.code_order-b.code_order):(a.field_order-b.field_order);
-      });
-      if(!fields.length)return;
-
-      html+='<div style="margin-bottom:20px">'+
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'+
-        '<div><div style="font-size:12px;font-weight:700;color:'+g.color+'">'+g.label+'</div>'+
-        '<div style="font-size:10px;color:var(--text3)">'+g.desc+'</div></div>'+
-        (g.id!=='code'?'<button class="btn btn-sm btn-primary" onclick="openSchemaModal(null,\''+g.id+'\')">+ Agregar campo</button>':'')+
-        '</div>'+
-        fields.map(function(s){
-          var isCode=g.id==='code';
-          return '<div class="schema-item" style="margin-bottom:5px">'+
-            '<div class="schema-order" style="background:'+g.color+'20;color:'+g.color+'">'+
-            (isCode?s.code_order:s.field_order)+'</div>'+
-            '<div class="schema-info">'+
-            '<div class="schema-name">'+s.name+'</div>'+
-            '<div class="schema-meta">'+
-            '<span class="schema-key">.'+s.key+'</span>'+
-            '<span class="schema-type-badge">'+(s.field_type==='dropdown'?'lista':s.field_type)+'</span>'+
-            (s.is_required?'<span style="font-size:9px;color:var(--red);font-weight:600">obligatorio</span>':'')+
-            (isCode?'<span class="code-seg">cod.#'+s.code_order+(s.separator?' + "'+s.separator+'"':'')+'</span>':'')+
-            '</div>'+
-            (s.allowed_values?'<div class="schema-vals">'+s.allowed_values.map(function(v){return '<span class="val-pill">'+v.value+'</span>';}).join('')+'</div>':'')+
-            (s.options?'<div class="schema-vals">'+JSON.parse(typeof s.options==='string'?s.options:JSON.stringify(s.options)).map(function(v){return '<span class="val-pill">'+v+'</span>';}).join('')+'</div>':'')+
-            '</div>'+
-            // Visible toggle (solo para no-code)
-            (!isCode?
-            '<div style="display:flex;align-items:center;gap:6px;margin-right:8px">'+
-            '<span style="font-size:10px;color:var(--text3)">Visible</span>'+
-            '<label class="toggle">'+
-            '<input type="checkbox"'+(s.is_visible?' checked':'')+' onchange="toggleVisible(\''+s.id+'\',this.checked)">'+
-            '<span class="toggle-slider"></span></label></div>':'')+ 
-            '<div style="display:flex;gap:4px">'+
-            '<button class="btn btn-ghost btn-sm" onclick="openSchemaModal(\''+s.id+'\',\''+g.id+'\')">'+
-            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+
-            (!isCode?'<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="confirmDeleteSchema(\''+s.id+'\',\''+s.name+'\')">'+
-            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>':'')+
-            '</div></div>';
-        }).join('')+
-        '</div>';
+    // Dynamic milestone groups — discover from schemas
+    var hitoIds=[];
+    schemas.forEach(function(s){
+      var g=s.field_group;
+      if(g&&g!=='code'&&g!=='general'&&hitoIds.indexOf(g)<0)hitoIds.push(g);
+    });
+    // Sort hitos: riba2 < riba3 < riba4 < custom
+    hitoIds.sort(function(a,b){
+      var order={riba2:1,riba3:2,riba4:3};
+      return (order[a]||99)-(order[b]||99);
     });
 
-    document.getElementById('content').innerHTML=html;
+    var HITO_COLORS=['#06b6d4','#3b82f6','#8b5cf6','#f59e0b','#10b981','#f43f5e','#6366f1'];
+    var hitoGroups=hitoIds.map(function(id,i){
+      // Try to get label from schema description or use id
+      var sample=schemas.find(function(s){return s.field_group===id;});
+      var label=sample&&sample.description&&sample.description.indexOf('hito:')===0
+        ?sample.description.replace('hito:','').trim()
+        :id.replace('riba2','RIBA 2 - Presentacion 0')
+           .replace('riba3','RIBA 3 - Presentacion 1')
+           .replace('riba4','RIBA 4 - Presentacion 2')
+           .replace(/_/g,' ').replace(/\w/g,function(c){return c.toUpperCase();});
+      return {id:id,label:label,color:HITO_COLORS[i%HITO_COLORS.length],desc:'Campos del hito '+label,fixed:false};
+    });
+
+    var allGroups=fixedGroups.concat(hitoGroups);
+
+    function renderSchemaItem(s,g){
+      var isCode=g.id==='code';
+      var el=document.createElement('div');
+      el.className='schema-item';
+      el.style.marginBottom='5px';
+      el.innerHTML=
+        '<div class="schema-order" style="background:'+g.color+'20;color:'+g.color+'">'+
+        (isCode?s.code_order:s.field_order)+'</div>'+
+        '<div class="schema-info">'+
+        '<div class="schema-name">'+s.name+'</div>'+
+        '<div class="schema-meta">'+
+        '<span class="schema-key">.'+s.key+'</span>'+
+        '<span class="schema-type-badge">'+(s.field_type==='dropdown'?'lista':s.field_type)+'</span>'+
+        (s.is_required?'<span style="font-size:9px;color:var(--red);font-weight:600">obligatorio</span>':'')+
+        (isCode?'<span class="code-seg">cod.#'+s.code_order+(s.separator?' + "'+s.separator+'"':'')+'</span>':'')+
+        '</div>'+
+        (s.allowed_values?'<div class="schema-vals">'+s.allowed_values.map(function(v){return '<span class="val-pill">'+v.value+'</span>';}).join('')+'</div>':'')+
+        (s.options?'<div class="schema-vals">'+JSON.parse(typeof s.options==='string'?s.options:JSON.stringify(s.options)).map(function(v){return '<span class="val-pill">'+v+'</span>';}).join('')+'</div>':'')+
+        '</div>'+
+        (!isCode?
+          '<div style="display:flex;align-items:center;gap:6px;margin-right:8px">'+
+          '<span style="font-size:10px;color:var(--text3)">Visible</span>'+
+          '<label class="toggle"><input type="checkbox"'+(s.is_visible?' checked':'')+' data-schema-id="'+s.id+'"><span class="toggle-slider"></span></label>'+
+          '</div>':'')+ 
+        '<div style="display:flex;gap:4px">'+
+        '<button class="btn btn-ghost btn-sm" data-edit-schema="'+s.id+'" data-group="'+g.id+'">'+
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+
+        (!isCode?'<button class="btn btn-ghost btn-sm" style="color:var(--red)" data-del-schema="'+s.id+'" data-schema-name="'+s.name+'">'+
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>':'')+
+        '</div>';
+      return el;
+    }
+
+    var container=document.createElement('div');
+    container.innerHTML='<div class="page-header"><div><h1 class="page-title">Config. de campos</h1>'+
+      '<p class="page-sub">Codificacion, metadata e hitos del proyecto · '+APP.project.code+'</p></div></div>';
+
+    allGroups.forEach(function(g){
+      var fields=schemas.filter(function(s){return s.field_group===g.id;})
+        .sort(function(a,b){return g.id==='code'?(a.code_order-b.code_order):(a.field_order-b.field_order);});
+
+      var section=document.createElement('div');
+      section.style.marginBottom='20px';
+
+      // Header
+      var header=document.createElement('div');
+      header.style.cssText='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px';
+      header.innerHTML=
+        '<div>'+
+        '<div style="font-size:12px;font-weight:700;color:'+g.color+'">'+g.label+'</div>'+
+        '<div style="font-size:10px;color:var(--text3)">'+g.desc+'</div></div>';
+
+      // Buttons for non-fixed groups
+      if(!g.fixed){
+        var btnWrap=document.createElement('div');
+        btnWrap.style.cssText='display:flex;gap:6px;align-items:center';
+        var addBtn=document.createElement('button');
+        addBtn.className='btn btn-sm btn-primary';
+        addBtn.textContent='+ Agregar campo';
+        addBtn.onclick=(function(gid){return function(){openSchemaModal(null,gid);};})(g.id);
+        btnWrap.appendChild(addBtn);
+        // Allow rename/delete hito for non-standard groups
+        if(g.id!=='general'&&g.id!=='riba2'&&g.id!=='riba3'&&g.id!=='riba4'){
+          var renameBtn=document.createElement('button');
+          renameBtn.className='btn btn-sm';
+          renameBtn.textContent='Renombrar';
+          renameBtn.onclick=(function(gid,glabel){return function(){openRenameHitoModal(gid,glabel);};})(g.id,g.label);
+          btnWrap.appendChild(renameBtn);
+        }
+        header.appendChild(btnWrap);
+      }
+      section.appendChild(header);
+
+      if(!fields.length){
+        var empty=document.createElement('div');
+        empty.style.cssText='padding:12px 14px;background:var(--bg);border:1px dashed var(--border);border-radius:var(--r);font-size:12px;color:var(--text3)';
+        empty.textContent='Sin campos configurados. Agrega el primero con "+ Agregar campo".';
+        section.appendChild(empty);
+      }else{
+        fields.forEach(function(s){section.appendChild(renderSchemaItem(s,g));});
+      }
+      container.appendChild(section);
+    });
+
+    // Add "+ Nuevo hito" teaser at bottom if no custom hitos
+    if(hitoGroups.length===0){
+      var hint=document.createElement('div');
+      hint.style.cssText='padding:14px;background:var(--bg);border:1px dashed var(--border);border-radius:var(--rl);font-size:12px;color:var(--text3);text-align:center';
+      hint.innerHTML='No hay hitos configurados. Usa <strong>+ Nuevo hito</strong> en la barra superior para agregar (Ej: RIBA 2, RIBA 3, Construccion...).';
+      container.appendChild(hint);
+    }
+
+    var el=document.getElementById('content');
+    el.innerHTML='';
+    el.appendChild(container);
+
+    // Attach events via DOM (avoid inline onclick issues)
+    el.querySelectorAll('[data-edit-schema]').forEach(function(btn){
+      btn.onclick=function(){openSchemaModal(btn.dataset.editSchema,btn.dataset.group);};
+    });
+    el.querySelectorAll('[data-del-schema]').forEach(function(btn){
+      btn.onclick=function(){confirmDeleteSchema(btn.dataset.delSchema,btn.dataset.schemaName);};
+    });
+    el.querySelectorAll('input[data-schema-id]').forEach(function(inp){
+      inp.onchange=function(){toggleVisible(inp.dataset.schemaId,inp.checked);};
+    });
+
   }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
 }
 
@@ -1645,4 +1729,93 @@ function loadProjMembers(pid){
         };
       });
     });
+}
+
+// ── HITO MANAGEMENT ──
+function openNewHitoModal(){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='hito-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:440px">'+
+    '<div class="modal-header"><div class="modal-title">Nuevo hito</div>'+
+    '<button class="btn btn-ghost btn-sm" id="hito-close">X</button></div>'+
+    '<div class="modal-body">'+
+    '<p style="font-size:12px;color:var(--text2);margin-bottom:14px">'+
+    'Un hito agrupa campos de informacion por fase de entrega (Ej: RIBA 2, RIBA 3, Construccion, Puesta en Marcha).</p>'+
+    '<div class="form-grid">'+
+    '<div class="form-group full"><label class="label">Nombre del hito *</label>'+
+    '<input type="text" class="input" id="hito-name" placeholder="Ej: Construccion, Puesta en Marcha, RIBA 2..."></div>'+
+    '<div class="form-group full"><label class="label">Descripcion corta</label>'+
+    '<input type="text" class="input" id="hito-desc" placeholder="Ej: Presentacion 3, Entrega final..."></div>'+
+    '</div></div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="hito-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="hito-save">Crear hito</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('hito-close').onclick=function(){overlay.remove();};
+  document.getElementById('hito-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('hito-save').onclick=function(){
+    var name=document.getElementById('hito-name').value.trim();
+    if(!name){toast('El nombre es obligatorio.','error');return;}
+    var key='hito_'+name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+    // Check not duplicate
+    var existing=APP.schemas.find(function(s){return s.field_group===key;});
+    if(existing){toast('Ya existe un hito con ese nombre.','error');return;}
+    // Create a placeholder field to establish the group (will be the "responsible" field)
+    var desc=document.getElementById('hito-desc').value.trim();
+    var placeholder={
+      project_id:APP.project.id,
+      name:name+' - Responsable',
+      key:key+'_responsible',
+      field_type:'text',
+      is_required:false,is_part_of_code:false,
+      code_order:99,separator:'',max_length:255,
+      field_group:key,
+      is_visible:true,
+      field_order:1,
+      placeholder:'Responsable del hito',
+      is_active:true,
+      // Store hito label in description with prefix for lookup
+      description:'hito:'+name+(desc?' - '+desc:'')
+    };
+    sbPost('field_schemas',placeholder).then(function(){
+      toast('Hito "'+name+'" creado.');
+      overlay.remove();
+      renderSchemas();
+    }).catch(function(e){toast(e.message,'error');});
+  };
+  document.getElementById('hito-name').focus();
+}
+
+function openRenameHitoModal(groupId,currentLabel){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='rename-hito-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:400px">'+
+    '<div class="modal-header"><div class="modal-title">Renombrar hito</div>'+
+    '<button class="btn btn-ghost btn-sm" id="rh-close">X</button></div>'+
+    '<div class="modal-body">'+
+    '<div class="form-group"><label class="label">Nuevo nombre</label>'+
+    '<input type="text" class="input" id="rh-name" value="'+currentLabel+'"></div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="rh-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="rh-save">Guardar</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('rh-close').onclick=function(){overlay.remove();};
+  document.getElementById('rh-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('rh-save').onclick=function(){
+    var newName=document.getElementById('rh-name').value.trim();
+    if(!newName){toast('Nombre obligatorio.','error');return;}
+    // Update description of all schemas in this group
+    var ids=APP.schemas.filter(function(s){return s.field_group===groupId;}).map(function(s){return s.id;});
+    var updates=ids.map(function(id){
+      return sbPatch('field_schemas','id=eq.'+id,{description:'hito:'+newName});
+    });
+    Promise.all(updates).then(function(){
+      toast('Hito renombrado.');overlay.remove();renderSchemas();
+    }).catch(function(e){toast(e.message,'error');});
+  };
 }

@@ -132,9 +132,11 @@ function showApp(user){
     document.getElementById('sb-proj-code').textContent=APP.project.code;
     document.getElementById('sb-proj-name').textContent=APP.project.name;
   }
-  // Mostrar menu Paquetes solo para admin
+  // Mostrar menus de admin solo para administrador
   var pkgBtn=document.getElementById('sb-packages');
   if(pkgBtn)pkgBtn.style.display=(user.role==='admin'?'flex':'none');
+  var usrBtn=document.getElementById('sb-users');
+  if(usrBtn)usrBtn.style.display=(user.role==='admin'?'flex':'none');
   nav('deliverables',document.querySelector('.sb-item'));
 }
 
@@ -701,19 +703,27 @@ function renderProgress(){
     '<div id="progress-content">'+loading()+'</div>';
 
   window._progressAllDels=null;window._progressProd=null;
+  // Set loading in progress-content
+  var pcEl=document.getElementById('progress-content');
+  if(pcEl)pcEl.innerHTML=loading();
   Promise.all([
     sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'),
     sbGet('production_units','?select=*').catch(function(){return[];})
   ]).then(function(res){
     window._progressAllDels=res[0];window._progressProd=res[1];
-    // Populate discipline filter
-    var discs=[...new Set(res[0].map(function(d){return (d.field_values&&d.field_values.disciplina)||'';}).filter(Boolean))].sort();
+    // Populate discipline filter dynamically
+    var discs=[];
+    res[0].forEach(function(d){var disc=(d.field_values&&d.field_values.disciplina)||'';if(disc&&discs.indexOf(disc)<0)discs.push(disc);});
+    discs.sort();
     var discSel=document.getElementById('pf-disc');
-    if(discSel){discs.forEach(function(d){var o=document.createElement('option');o.value=d;o.textContent=d;discSel.appendChild(o);});}
+    if(discSel){
+      discSel.innerHTML='<option value="">Disciplina</option>';
+      discs.forEach(function(d){var o=document.createElement('option');o.value=d;o.textContent=d;discSel.appendChild(o);});
+    }
     applyProgressFilters();
   }).catch(function(e){
-    var el=document.getElementById('progress-content');
-    if(el)el.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+    var pce=document.getElementById('progress-content');
+    if(pce)pce.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
   });
 }
 
@@ -948,7 +958,7 @@ function renderSchemas(){
         '</div>';
     });
 
-    el.innerHTML=html;
+    document.getElementById('content').innerHTML=html;
   }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
 }
 

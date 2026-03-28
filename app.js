@@ -7,7 +7,7 @@ function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:
 function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 
-var APP={user:null,project:null,schemas:[],users:[],search:'',statusFilter:'',fieldFilters:{}};
+var APP={user:null,project:null,schemas:[],users:[],packages:[],search:'',statusFilter:'',packageFilter:'',fieldFilters:{}};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
 function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true;return !!(APP.user.permissions||DEFAULT_PERMS)[a];}
 
@@ -34,7 +34,7 @@ var STATUS_CFG={
   rejected:{label:'Rechazado',cls:'b-rejected'}
 };
 var ROLE_CFG={admin:{label:'Administrador',cls:'b-admin'},bim_manager:{label:'BIM Manager',cls:'b-bim'},specialist:{label:'Especialista',cls:'b-spec'}};
-var FILTER_FIELDS=['originador','area_funcional','fase_proyecto','volumen','nivel','disciplina','tipo_documento'];
+var FILTER_FIELDS=['area_funcional','fase_proyecto','volumen','nivel','disciplina','tipo_documento'];
 
 // ── HELPERS ──
 function statusBadge(s){var c=STATUS_CFG[s]||STATUS_CFG.pending;return '<span class="badge '+c.cls+'">'+c.label+'</span>';}
@@ -114,9 +114,10 @@ function loadAppData(){
     .then(function(ps){
       APP.project=ps[0]||null;
       var p2=APP.project?sbGet('field_schemas','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=field_order.asc,code_order.asc'):Promise.resolve([]);
-      return Promise.all([p2,sbGet('users','?select=*&order=full_name.asc')]);
+      var p3=APP.project?sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'):Promise.resolve([]);
+      return Promise.all([p2,sbGet('users','?select=*&order=full_name.asc'),p3]);
     })
-    .then(function(r){APP.schemas=r[0];APP.users=r[1];});
+    .then(function(r){APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];});
 }
 
 function showApp(user){
@@ -131,6 +132,9 @@ function showApp(user){
     document.getElementById('sb-proj-code').textContent=APP.project.code;
     document.getElementById('sb-proj-name').textContent=APP.project.name;
   }
+  // Mostrar menu Paquetes solo para admin
+  var pkgBtn=document.getElementById('sb-packages');
+  if(pkgBtn)pkgBtn.style.display=(user.role==='admin'?'flex':'none');
   nav('deliverables',document.querySelector('.sb-item'));
 }
 
@@ -170,13 +174,13 @@ document.addEventListener('DOMContentLoaded',function(){
 });
 
 // ── NAV ──
-var BREAD={deliverables:'Entregables MIDP',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos'};
+var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos'};
 function nav(view,el){
   document.querySelectorAll('.sb-item').forEach(function(i){i.classList.remove('active');});
   if(el)el.classList.add('active');
   document.getElementById('bread-title').textContent=BREAD[view]||view;
-  ({deliverables:renderDeliverables,progress:renderProgress,schemas:renderSchemas,users:renderUsers})[view]&&
-  ({deliverables:renderDeliverables,progress:renderProgress,schemas:renderSchemas,users:renderUsers})[view]();
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers})[view]&&
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers})[view]();
 }
 
 // ── DELIVERABLES ──
@@ -209,6 +213,10 @@ function renderDeliverables(){
     '<option value="">Todos estados</option>'+
     Object.entries(STATUS_CFG).map(function(e){return '<option value="'+e[0]+'">'+e[1].label+'</option>';}).join('')+
     '</select>'+schemaFilters+
+    '<select class="input" style="width:120px;font-size:11px" onchange="APP.packageFilter=this.value;loadDeliverables()">'+
+    '<option value="">Paquete</option>'+
+    APP.packages.map(function(p){return '<option value="'+p.code+'"'+(APP.packageFilter===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
+    '</select>'+
     '<button class="btn btn-sm" onclick="clearFilters()">x Limpiar</button>'+
     '<button class="btn btn-sm" onclick="loadDeliverables()">&#8635;</button></div>'+
     '<div id="del-table">'+loading()+'</div>';
@@ -216,7 +224,7 @@ function renderDeliverables(){
 }
 
 function setFieldFilter(key,val){APP.fieldFilters[key]=val;loadDeliverables();}
-function clearFilters(){APP.fieldFilters={};APP.search='';APP.statusFilter='';renderDeliverables();}
+function clearFilters(){APP.fieldFilters={};APP.search='';APP.statusFilter='';APP.packageFilter='';renderDeliverables();}
 
 function loadDeliverables(){
   if(!APP.project)return;
@@ -227,6 +235,7 @@ function loadDeliverables(){
     var v=APP.fieldFilters[k];
     if(v)params+='&field_values->>'+k+'=eq.'+encodeURIComponent(v);
   });
+  if(APP.packageFilter)params+='&work_package=eq.'+encodeURIComponent(APP.packageFilter);
 
   Promise.all([
     sbGet('deliverables',params),
@@ -394,8 +403,17 @@ function changeStatus(id,s){
 function openDeliverableModal(id){
   if(id&&!can('can_edit_deliverables')){toast('Sin permiso para editar.','error');return;}
   if(!id&&!can('can_create_deliverables')){toast('Sin permiso para crear.','error');return;}
+  // Cargar entregables tipo MOD para doc_assoc
   var getD=id?sbGet('deliverables','?id=eq.'+id+'&limit=1').then(function(r){return r[0];}):Promise.resolve(null);
-  getD.then(function(d){
+  var getMods=sbGet('deliverables',
+    '?project_id=eq.'+APP.project.id+
+    '&is_active=eq.true'+
+    '&field_values->>tipo_documento=eq.MOD'+
+    '&select=id,code,name&order=code.asc'
+  ).catch(function(){return [];});
+  Promise.all([getD,getMods]).then(function(res){
+  var d=res[0];
+  window._modDels=res[1];
     var fv=d?d.field_values||{}:{};
 
     // Seccion 1: Campos de codigo
@@ -424,6 +442,13 @@ function openDeliverableModal(id){
       var col=colMap[s.key];
       var val=d&&col?d[col]||'':'';
 
+      if(s.key==='paquete'){
+        return '<div class="form-group"><label class="label">'+s.name+'</label>'+
+          '<select class="input" id="gen_paquete">'+
+          '<option value="">Sin paquete</option>'+
+          APP.packages.map(function(p){return '<option value="'+p.code+'"'+(d&&d.work_package===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
+          '</select></div>';
+      }
       if(s.key==='estado'){
         return '<div class="form-group"><label class="label">'+s.name+'</label>'+
           '<select class="input" id="gen_estado">'+
@@ -457,7 +482,13 @@ function openDeliverableModal(id){
         var val=d&&d[s.key]||'';
         var isFull=s.key===ph.key+'_doc_assoc';
         var inp='';
-        if(s.field_type==='dropdown'&&s.options){
+        if(s.key.indexOf('_doc_assoc')>=0){
+          // Doc. asociada = dropdown de entregables tipo MOD (Modelo)
+          inp='<select class="input" id="ph_'+s.key+'">'+
+            '<option value="">Sin documento asociado</option>'+
+            (window._modDels||[]).map(function(m){return '<option value="'+m.code+'"'+(val===m.code?' selected':'')+'>'+m.code+' - '+m.name+'</option>';}).join('')+
+            '</select>';
+        }else if(s.field_type==='dropdown'&&s.options){
           var opts=JSON.parse(typeof s.options==='string'?s.options:JSON.stringify(s.options));
           inp='<select class="input" id="ph_'+s.key+'"><option value="">--</option>'+
             opts.map(function(v){return '<option value="'+v+'"'+(val===v?' selected':'')+'>'+v+'</option>';}).join('')+'</select>';
@@ -502,7 +533,7 @@ function openDeliverableModal(id){
       (d?'Actualizar entregable':'Crear entregable')+'</button></div></div></div>';
 
     if(d)updateCodePreview(id);
-  });
+  }); // cierre Promise.all([getD,getMods])
 }
 
 function updateCodePreview(excludeId){
@@ -647,15 +678,69 @@ function exportMIDP(){
 // ── PROGRESS ──
 function renderProgress(){
   document.getElementById('topbar-actions').innerHTML='';
+  // Build discipline and package lists for filters
+  var discList=[];var pkgList=APP.packages.filter(function(p){return p.is_active;});
+
   document.getElementById('content').innerHTML=
     '<div class="page-header"><div><h1 class="page-title">Control de avance</h1>'+
-    '<p class="page-sub">Avance por fase RIBA</p></div></div>'+loading();
+    '<p class="page-sub">Avance por fase RIBA</p></div></div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px" id="progress-filters">'+
+    '<select class="input" style="width:130px;font-size:11px" id="pf-disc" onchange="applyProgressFilters()"><option value="">Disciplina</option></select>'+
+    '<select class="input" style="width:130px;font-size:11px" id="pf-pkg" onchange="applyProgressFilters()">'+
+    '<option value="">Paquete</option>'+
+    pkgList.map(function(p){return '<option value="'+p.code+'">'+p.code+' - '+p.name+'</option>';}).join('')+
+    '</select>'+
+    '<select class="input" style="width:130px;font-size:11px" id="pf-phase" onchange="applyProgressFilters()">'+
+    '<option value="">Todas las fases</option>'+
+    '<option value="riba2">RIBA 2 - Presentacion 0</option>'+
+    '<option value="riba3">RIBA 3 - Presentacion 1</option>'+
+    '<option value="riba4">RIBA 4 - Presentacion 2</option>'+
+    '</select>'+
+    '<button class="btn btn-sm" onclick="clearProgressFilters()">x Limpiar</button>'+
+    '</div>'+
+    '<div id="progress-content">'+loading()+'</div>';
 
+  window._progressAllDels=null;window._progressProd=null;
   Promise.all([
     sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'),
     sbGet('production_units','?select=*').catch(function(){return[];})
   ]).then(function(res){
-    var deliverables=res[0];var prod=res[1];
+    window._progressAllDels=res[0];window._progressProd=res[1];
+    // Populate discipline filter
+    var discs=[...new Set(res[0].map(function(d){return (d.field_values&&d.field_values.disciplina)||'';}).filter(Boolean))].sort();
+    var discSel=document.getElementById('pf-disc');
+    if(discSel){discs.forEach(function(d){var o=document.createElement('option');o.value=d;o.textContent=d;discSel.appendChild(o);});}
+    applyProgressFilters();
+  }).catch(function(e){
+    var el=document.getElementById('progress-content');
+    if(el)el.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+  });
+}
+
+function clearProgressFilters(){
+  var d=document.getElementById('pf-disc');if(d)d.value='';
+  var p=document.getElementById('pf-pkg');if(p)p.value='';
+  var ph=document.getElementById('pf-phase');if(ph)ph.value='';
+  applyProgressFilters();
+}
+function applyProgressFilters(){
+  var disc=document.getElementById('pf-disc')?document.getElementById('pf-disc').value:'';
+  var pkg=document.getElementById('pf-pkg')?document.getElementById('pf-pkg').value:'';
+  var phase=document.getElementById('pf-phase')?document.getElementById('pf-phase').value:'';
+  var allDels=window._progressAllDels||[];
+  var prod=window._progressProd||[];
+  var deliverables=allDels.filter(function(d){
+    if(disc&&(d.field_values&&d.field_values.disciplina)!==disc)return false;
+    if(pkg&&d.work_package!==pkg)return false;
+    if(phase&&!d[phase+'_delivery_date'])return false;
+    return true;
+  });
+  renderProgressContent(deliverables,prod);
+}
+
+function renderProgressContent(deliverables,prod){
+  var el=document.getElementById('progress-content');
+  if(!el)return;
     var prodMap={};
     prod.forEach(function(p){
       if(!prodMap[p.deliverable_id])prodMap[p.deliverable_id]={plan:0,cons:0};
@@ -766,7 +851,7 @@ function renderProgress(){
           '</tr>';
       }).join('')+
       '</tbody></table></div>';
-  }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
+  el.innerHTML=html;
 }
 
 function openProgressModal(delId,code,plan,cons){
@@ -863,7 +948,7 @@ function renderSchemas(){
         '</div>';
     });
 
-    document.getElementById('content').innerHTML=html;
+    el.innerHTML=html;
   }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
 }
 
@@ -1082,4 +1167,148 @@ function saveUser(id){
     });
   p.then(function(){toast(id?'Usuario actualizado.':'Usuario creado.');closeModal('user-modal');renderUsers();})
    .catch(function(e){if(e.message!=='missing')toast(e.message,'error');btn.disabled=false;btn.textContent=id?'Actualizar':'Crear usuario';});
+}
+
+// ── PAQUETES ──
+function renderPackages(){
+  document.getElementById('topbar-actions').innerHTML='<button class="btn btn-primary btn-sm" onclick="openPackageModal(null)">+ Nuevo paquete</button>';
+  document.getElementById('content').innerHTML='<div class="page-header"><div><h1 class="page-title">Paquetes de trabajo</h1><p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div><div id="pkg-list">'+loading()+'</div>';
+  loadPackages();
+}
+
+function loadPackages(){
+  sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
+    .then(function(pkgs){
+      APP.packages=pkgs;
+      var el=document.getElementById('pkg-list');
+      if(!el)return;
+      if(!pkgs.length){
+        el.innerHTML='<div class="card"><div class="empty"><div class="empty-title">Sin paquetes</div><div class="empty-desc">Crea el primero con + Nuevo paquete.</div></div></div>';
+        return;
+      }
+      var rows=pkgs.map(function(p){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td><span class="code-chip">'+p.code+'</span></td>'+
+          '<td style="font-weight:600;color:var(--text)">'+p.name+'</td>'+
+          '<td style="font-size:11px;color:var(--text3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.description||'--')+'</td>'+
+          '<td>'+(p.discipline?'<span class="badge b-progress">'+p.discipline+'</span>':'--')+'</td>'+
+          '<td style="font-size:11px">'+(p.responsible||'--')+'</td>'+
+          '<td style="font-size:11px">'+(p.start_date?new Date(p.start_date).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}):'--')+'</td>'+
+          '<td style="font-size:11px">'+(p.end_date?new Date(p.end_date).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}):'--')+'</td>'+
+          '<td></td>';
+        // Build action buttons safely
+        var btnEdit=document.createElement('button');
+        btnEdit.className='btn btn-ghost btn-sm';
+        btnEdit.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        btnEdit.onclick=(function(pid){return function(){openPackageModal(pid);};})(p.id);
+        var btnDel=document.createElement('button');
+        btnDel.className='btn btn-ghost btn-sm';
+        btnDel.style.color='var(--red)';
+        btnDel.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+        btnDel.onclick=(function(pid,pname){return function(){confirmDeletePackage(pid,pname);};})(p.id,p.name);
+        var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:4px;justify-content:flex-end';
+        wrap.appendChild(btnEdit);wrap.appendChild(btnDel);
+        tr.lastElementChild.appendChild(wrap);
+        return tr.outerHTML;
+      }).join('');
+      el.innerHTML='<div class="card" style="overflow:hidden"><table class="tbl"><thead><tr>'+
+        '<th>Codigo</th><th>Nombre</th><th>Descripcion</th><th>Disciplina</th>'+
+        '<th>Responsable</th><th>Inicio</th><th>Fin</th><th style="text-align:right">Acciones</th>'+
+        '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }).catch(function(e){
+      var el=document.getElementById('pkg-list');
+      if(el)el.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+    });
+}
+
+function openPackageModal(pid){
+  var p=pid?APP.packages.find(function(x){return x.id===pid;}):null;
+  var discSchema=codeSchemas().find(function(s){return s.key==='disciplina';});
+  var discOpts='<option value="">Sin disciplina</option>';
+  if(discSchema&&discSchema.allowed_values){
+    discOpts+=discSchema.allowed_values.map(function(v){
+      return '<option value="'+v.value+'"'+(p&&p.discipline===v.value?' selected':'')+'>'+v.value+' - '+v.label+'</option>';
+    }).join('');
+  }
+  var overlay=document.createElement('div');
+  overlay.id='pkg-modal';
+  overlay.className='modal-overlay';
+  overlay.innerHTML=
+    '<div class="modal"><div class="modal-header">'+
+    '<div class="modal-title">'+(p?'Editar: '+p.name:'Nuevo paquete')+'</div>'+
+    '<button class="btn btn-ghost btn-sm" id="pkg-close-btn">X</button></div>'+
+    '<div class="modal-body"><div class="form-grid">'+
+    '<div class="form-group"><label class="label">Codigo *</label>'+
+    '<input type="text" class="input" id="pkg-code" value="'+(p?p.code:'')+'" placeholder="Ej: PKG-ARQ-01"'+(p?' disabled':'')+' style="font-family:monospace"></div>'+
+    '<div class="form-group"><label class="label">Nombre *</label>'+
+    '<input type="text" class="input" id="pkg-name" value="'+(p?p.name:'')+'" placeholder="Ej: Paquete Arquitectura"></div>'+
+    '<div class="form-group full"><label class="label">Descripcion</label>'+
+    '<textarea class="input" id="pkg-desc" rows="2">'+(p?p.description||'':'')+'</textarea></div>'+
+    '<div class="form-group"><label class="label">Disciplina</label>'+
+    '<select class="input" id="pkg-disc">'+discOpts+'</select></div>'+
+    '<div class="form-group"><label class="label">Responsable</label>'+
+    '<input type="text" class="input" id="pkg-resp" value="'+(p?p.responsible||'':'')+'"></div>'+
+    '<div class="form-group"><label class="label">Fecha inicio</label>'+
+    '<input type="date" class="input" id="pkg-start" value="'+(p?p.start_date||'':'')+'"></div>'+
+    '<div class="form-group"><label class="label">Fecha fin</label>'+
+    '<input type="date" class="input" id="pkg-end" value="'+(p?p.end_date||'':'')+'"></div>'+
+    '</div></div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="pkg-cancel-btn">Cancelar</button>'+
+    '<button class="btn btn-primary" id="pkg-save-btn">'+(p?'Actualizar paquete':'Crear paquete')+'</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('pkg-close-btn').onclick=function(){closeModal('pkg-modal');};
+  document.getElementById('pkg-cancel-btn').onclick=function(){closeModal('pkg-modal');};
+  document.getElementById('pkg-save-btn').onclick=function(){savePackage(pid||null);};
+}
+
+function savePackage(pid){
+  var btn=document.getElementById('pkg-save-btn');
+  var code=document.getElementById('pkg-code').value.trim().toUpperCase();
+  var name=document.getElementById('pkg-name').value.trim();
+  if(!code||!name){toast('Codigo y nombre son obligatorios.','error');return;}
+  btn.disabled=true;btn.textContent='Guardando...';
+  var payload={
+    project_id:APP.project.id,code:code,name:name,
+    description:document.getElementById('pkg-desc').value||null,
+    discipline:document.getElementById('pkg-disc').value||null,
+    responsible:document.getElementById('pkg-resp').value||null,
+    start_date:document.getElementById('pkg-start').value||null,
+    end_date:document.getElementById('pkg-end').value||null
+  };
+  var req=pid?sbPatch('packages','id=eq.'+pid,payload):sbPost('packages',payload);
+  req.then(function(){
+    toast(pid?'Paquete actualizado.':'Paquete creado.');
+    closeModal('pkg-modal');
+    sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
+      .then(function(pkgs){APP.packages=pkgs;}).catch(function(){});
+    loadPackages();
+  }).catch(function(e){toast(e.message,'error');btn.disabled=false;btn.textContent=pid?'Actualizar':'Crear paquete';});
+}
+
+function confirmDeletePackage(pid,pname){
+  var overlay=document.createElement('div');
+  overlay.id='pkg-confirm';overlay.className='modal-overlay';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:380px">'+
+    '<div class="modal-header"><div class="modal-title">Eliminar paquete?</div>'+
+    '<button class="btn btn-ghost btn-sm" id="pkgc-close">X</button></div>'+
+    '<div class="modal-body"><p style="font-size:13px;color:var(--text2)">Eliminar el paquete <strong>'+pname+'</strong>?</p>'+
+    '<p style="font-size:11px;color:var(--text3);margin-top:6px">Los entregables asociados no se veran afectados.</p></div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="pkgc-cancel">Cancelar</button>'+
+    '<button class="btn btn-danger" id="pkgc-del">Eliminar</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('pkgc-close').onclick=function(){closeModal('pkg-confirm');};
+  document.getElementById('pkgc-cancel').onclick=function(){closeModal('pkg-confirm');};
+  document.getElementById('pkgc-del').onclick=function(){deletePackage(pid);};
+}
+
+function deletePackage(pid){
+  sbPatch('packages','id=eq.'+pid,{is_active:false})
+    .then(function(){closeModal('pkg-confirm');toast('Paquete eliminado.');loadPackages();})
+    .catch(function(e){toast(e.message,'error');});
 }

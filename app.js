@@ -741,6 +741,30 @@ function renderProgress(){
   });
 }
 
+function clearProgressFilters(){
+  var d=document.getElementById('pf-disc');if(d)d.value='';
+  var p=document.getElementById('pf-pkg');if(p)p.value='';
+  var ph=document.getElementById('pf-phase');if(ph)ph.value='';
+  applyProgressFilters();
+}
+
+function applyProgressFilters(){
+  var disc=document.getElementById('pf-disc')?document.getElementById('pf-disc').value:'';
+  var pkg=document.getElementById('pf-pkg')?document.getElementById('pf-pkg').value:'';
+  var phase=document.getElementById('pf-phase')?document.getElementById('pf-phase').value:'';
+  var allDels=window._progressAllDels;
+  if(!allDels){return;}
+  var deliverables=allDels.filter(function(d){
+    if(disc&&(d.field_values&&d.field_values.disciplina)!==disc)return false;
+    if(pkg&&d.work_package!==pkg)return false;
+    if(phase&&!d[phase+'_delivery_date'])return false;
+    return true;
+  });
+  var pce=document.getElementById('progress-content');
+  if(!pce)return;
+  renderProgressContent(deliverables,window._progressProd||[]);
+}
+
 function renderProgressContent(deliverables,prod){
   var el=document.getElementById('progress-content');
   if(!el)return;

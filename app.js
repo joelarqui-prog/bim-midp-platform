@@ -98,30 +98,95 @@ function handleLogin(){
       return sbRpc('verify_password',{input_password:pass,stored_hash:user.password_hash})
         .then(function(ok){
           if(!ok){showErr('Correo o contrasena incorrectos.');return;}
-          btn.textContent='Cargando...';
-          sbPatch('users','id=eq.'+user.id,{last_login_at:new Date().toISOString()}).catch(function(){});
           APP.user=user;
-          return loadAppData().then(function(){
-            try{localStorage.setItem('midp_session',JSON.stringify({userId:user.id,savedAt:Date.now()}));}catch(e){}
-            showApp(user);
-          });
+          sbPatch('users','id=eq.'+user.id,{last_login_at:new Date().toISOString()}).catch(function(){});
+          try{localStorage.setItem('midp_session',JSON.stringify({userId:user.id,savedAt:Date.now()}));}catch(e){}
+          showProjectSelector(user);
         });
     }).catch(function(e){showErr('Error: '+e.message);});
 }
 
-function loadAppData(){
-  return sbGet('projects','?is_active=eq.true&order=created_at.asc&limit=1')
+function showProjectSelector(user){
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('app').style.display='none';
+  document.getElementById('project-selector').style.display='flex';
+  document.getElementById('ps-avatar').textContent=initials(user.full_name);
+  document.getElementById('ps-name').textContent=user.full_name;
+  document.getElementById('ps-email').textContent=user.email;
+  loadUserProjects(user);
+}
+
+function loadUserProjects(user){
+  var psEl=document.getElementById('ps-projects');
+  psEl.innerHTML='<div class="loading"><div class="spinner"></div>Cargando proyectos...</div>';
+
+  // Admin ve todos los proyectos; otros solo los que son miembros
+  var query=user.role==='admin'
+    ?sbGet('projects','?is_active=eq.true&order=created_at.desc')
+    :sbGet('project_members','?user_id=eq.'+user.id+'&select=project_id,projects(*)').then(function(r){
+        return r.map(function(m){return m.projects;}).filter(function(p){return p&&p.is_active;});
+      });
+
+  query.then(function(projects){
+    if(!projects||!projects.length){
+      psEl.innerHTML='<div style="text-align:center;padding:24px;color:rgba(255,255,255,.4)">No tienes proyectos asignados.<br>Contacta al administrador.</div>';
+      return;
+    }
+    var html=projects.map(function(p){
+      return '<div class="proj-item" onclick="selectProject(\""+p.id+"\")" data-pid="'+p.id+'">'+
+        '<div class="proj-item-icon"><svg viewBox="0 0 24 24" fill="white" width="20" height="20"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>'+
+        '<div style="min-width:0;flex:1">'+
+        '<div class="proj-item-code">'+p.code+'</div>'+
+        '<div class="proj-item-name">'+p.name+'</div>'+
+        '<div class="proj-item-meta">'+(p.client||'')+(p.phase?' &middot; '+p.phase:'')+'</div>'+
+        '</div>'+
+        '<div class="proj-item-arrow">&#8250;</div></div>';
+    }).join('');
+    if(user.role==='admin'){
+      html+='<button class="proj-new-btn" onclick="openNewProjectModal()">'+
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>'+
+        'Nuevo proyecto</button>';
+    }
+    psEl.innerHTML=html;
+  }).catch(function(e){
+    psEl.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:12px">Error: '+e.message+'</div>';
+  });
+}
+
+function selectProject(projectId){
+  var psEl=document.getElementById('ps-projects');
+  psEl.innerHTML='<div class="loading"><div class="spinner"></div>Cargando proyecto...</div>';
+  sbGet('projects','?id=eq.'+projectId+'&limit=1')
     .then(function(ps){
       APP.project=ps[0]||null;
       var p2=APP.project?sbGet('field_schemas','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=field_order.asc,code_order.asc'):Promise.resolve([]);
       var p3=APP.project?sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'):Promise.resolve([]);
       return Promise.all([p2,sbGet('users','?select=*&order=full_name.asc'),p3]);
     })
-    .then(function(r){APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];});
+    .then(function(r){
+      APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];
+      // Save project selection
+      try{
+        var s=JSON.parse(localStorage.getItem('midp_session')||'{}');
+        s.projectId=APP.project.id;
+        localStorage.setItem('midp_session',JSON.stringify(s));
+      }catch(e){}
+      showApp(APP.user);
+    })
+    .catch(function(e){
+      psEl.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:12px">Error al cargar proyecto: '+e.message+'</div>';
+    });
+}
+
+function goToProjectSelector(){
+  document.getElementById('app').style.display='none';
+  document.getElementById('project-selector').style.display='flex';
+  loadUserProjects(APP.user);
 }
 
 function showApp(user){
   document.getElementById('login-page').style.display='none';
+  document.getElementById('project-selector').style.display='none';
   document.getElementById('app').style.display='flex';
   document.getElementById('sb-avatar').textContent=initials(user.full_name);
   document.getElementById('sb-uname').textContent=user.full_name;
@@ -132,33 +197,91 @@ function showApp(user){
     document.getElementById('sb-proj-code').textContent=APP.project.code;
     document.getElementById('sb-proj-name').textContent=APP.project.name;
   }
-  // Mostrar menus de admin solo para administrador
-  var pkgBtn=document.getElementById('sb-packages');
-  if(pkgBtn)pkgBtn.style.display=(user.role==='admin'?'flex':'none');
-  var usrBtn=document.getElementById('sb-users');
-  if(usrBtn)usrBtn.style.display=(user.role==='admin'?'flex':'none');
+  var isAdmin=user.role==='admin';
+  var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdmin?'flex':'none';
+  var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdmin?'flex':'none';
+  var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
   nav('deliverables',document.querySelector('.sb-item'));
 }
 
 function doLogout(){
-  APP.user=null;APP.project=null;APP.schemas=[];APP.fieldFilters={};
+  APP.user=null;APP.project=null;APP.schemas=[];APP.packages=[];APP.fieldFilters={};
   try{localStorage.removeItem('midp_session');}catch(e){}
   document.getElementById('app').style.display='none';
+  document.getElementById('project-selector').style.display='none';
   document.getElementById('login-page').style.display='flex';
   document.getElementById('login-email').value='';
   document.getElementById('login-pass').value='';
 }
 
-function restoreSession(userId){
+function restoreSession(userId,projectId){
   sbGet('users','?id=eq.'+userId+'&is_active=eq.true&select=*')
     .then(function(users){
       if(!users||!users.length){localStorage.removeItem('midp_session');return;}
       APP.user=users[0];
-      return loadAppData().then(function(){
-        try{localStorage.setItem('midp_session',JSON.stringify({userId:APP.user.id,savedAt:Date.now()}));}catch(e){}
-        showApp(APP.user);
-      });
+      if(projectId){
+        selectProject(projectId);
+      }else{
+        showProjectSelector(APP.user);
+      }
     }).catch(function(){localStorage.removeItem('midp_session');});
+}
+
+// New project modal
+function openNewProjectModal(){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='new-proj-modal';
+  overlay.innerHTML=
+    '<div class="modal"><div class="modal-header">'+
+    '<div class="modal-title">Nuevo proyecto</div>'+
+    '<button class="btn btn-ghost btn-sm" id="np-close">X</button></div>'+
+    '<div class="modal-body"><div class="form-grid">'+
+    '<div class="form-group"><label class="label">Codigo *</label>'+
+    '<input type="text" class="input" id="np-code" placeholder="Ej: HRDTRU-2025" style="font-family:monospace"></div>'+
+    '<div class="form-group"><label class="label">Nombre *</label>'+
+    '<input type="text" class="input" id="np-name" placeholder="Nombre del proyecto"></div>'+
+    '<div class="form-group full"><label class="label">Descripcion</label>'+
+    '<textarea class="input" id="np-desc" rows="2" placeholder="Descripcion del proyecto"></textarea></div>'+
+    '<div class="form-group"><label class="label">Cliente</label>'+
+    '<input type="text" class="input" id="np-client" placeholder="Ej: PRONIS"></div>'+
+    '<div class="form-group"><label class="label">Ubicacion</label>'+
+    '<input type="text" class="input" id="np-location" placeholder="Ej: Trujillo, La Libertad"></div>'+
+    '<div class="form-group"><label class="label">Fase</label>'+
+    '<input type="text" class="input" id="np-phase" placeholder="Ej: RIBA 2/3/4"></div>'+
+    '</div></div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="np-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="np-save">Crear proyecto</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('np-close').onclick=function(){overlay.remove();};
+  document.getElementById('np-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('np-save').onclick=function(){saveNewProject();};
+}
+
+function saveNewProject(){
+  var code=document.getElementById('np-code').value.trim().toUpperCase();
+  var name=document.getElementById('np-name').value.trim();
+  if(!code||!name){toast('Codigo y nombre son obligatorios.','error');return;}
+  var btn=document.getElementById('np-save');
+  btn.disabled=true;btn.textContent='Creando...';
+  sbPost('projects',{
+    code:code,name:name,
+    description:document.getElementById('np-desc').value||null,
+    client:document.getElementById('np-client').value||null,
+    location:document.getElementById('np-location').value||null,
+    phase:document.getElementById('np-phase').value||null,
+    is_active:true,created_by:APP.user.id
+  }).then(function(rows){
+    var proj=rows[0];
+    // Add admin as member
+    return sbPost('project_members',{project_id:proj.id,user_id:APP.user.id,role:'admin'})
+      .then(function(){
+        toast('Proyecto creado.');
+        document.getElementById('new-proj-modal').remove();
+        loadUserProjects(APP.user);
+      });
+  }).catch(function(e){toast(e.message,'error');btn.disabled=false;btn.textContent='Crear proyecto';});
 }
 
 document.addEventListener('DOMContentLoaded',function(){
@@ -169,20 +292,21 @@ document.addEventListener('DOMContentLoaded',function(){
     if(saved){
       var session=JSON.parse(saved);
       if(session.userId&&(Date.now()-session.savedAt)<8*60*60*1000){
-        restoreSession(session.userId);return;
+        restoreSession(session.userId,session.projectId||null);return;
       }else{localStorage.removeItem('midp_session');}
     }
   }catch(e){}
 });
 
+
 // ── NAV ──
-var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos'};
+var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos'};
 function nav(view,el){
   document.querySelectorAll('.sb-item').forEach(function(i){i.classList.remove('active');});
   if(el)el.classList.add('active');
   document.getElementById('bread-title').textContent=BREAD[view]||view;
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers})[view]&&
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers})[view]();
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects})[view]&&
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects})[view]();
 }
 
 // ── DELIVERABLES ──
@@ -1338,4 +1462,178 @@ function deletePackage(pid){
   sbPatch('packages','id=eq.'+pid,{is_active:false})
     .then(function(){closeModal('pkg-confirm');toast('Paquete eliminado.');loadPackages();})
     .catch(function(e){toast(e.message,'error');});
+}
+
+// ── PROJECTS (Admin) ──
+function renderProjects(){
+  document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-primary btn-sm" onclick="openNewProjectModal()">+ Nuevo proyecto</button>';
+  document.getElementById('content').innerHTML=
+    '<div class="page-header"><div><h1 class="page-title">Proyectos</h1>'+
+    '<p class="page-sub">Gestion de proyectos de la organizacion</p></div></div>'+
+    '<div id="proj-list">'+loading()+'</div>';
+  sbGet('projects','?is_active=eq.true&order=created_at.desc')
+    .then(function(projects){
+      if(!projects.length){
+        document.getElementById('proj-list').innerHTML=
+          '<div class="card"><div class="empty"><div class="empty-title">Sin proyectos</div></div></div>';
+        return;
+      }
+      // For each project get member count
+      var memberCounts={};
+      sbGet('project_members','?select=project_id').then(function(members){
+        members.forEach(function(m){memberCounts[m.project_id]=(memberCounts[m.project_id]||0)+1;});
+        var rows=projects.map(function(p){
+          var isActive=p.id===APP.project.id;
+          return '<tr>'+
+            '<td><span class="code-chip">'+p.code+'</span>'+(isActive?'<span class="badge b-approved" style="font-size:9px;margin-left:6px">Activo</span>':'')+
+            '</td><td style="font-weight:600;color:var(--text)">'+p.name+'</td>'+
+            '<td style="font-size:11px">'+(p.client||'--')+'</td>'+
+            '<td style="font-size:11px">'+(p.location||'--')+'</td>'+
+            '<td style="font-size:11px">'+(p.phase||'--')+'</td>'+
+            '<td style="text-align:center"><span class="badge b-progress">'+(memberCounts[p.id]||0)+' miembros</span></td>'+
+            '<td><div style="display:flex;gap:4px;justify-content:flex-end">'+
+            buildProjBtn('edit',p.id)+
+            buildProjBtn('members',p.id)+
+            buildProjBtn('switch',p.id)+
+            '</div></td></tr>';
+        }).join('');
+        document.getElementById('proj-list').innerHTML=
+          '<div class="card" style="overflow:hidden"><table class="tbl"><thead><tr>'+
+          '<th>Codigo</th><th>Nombre</th><th>Cliente</th><th>Ubicacion</th><th>Fase</th><th>Miembros</th><th style="text-align:right">Acciones</th>'+
+          '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+        // Attach event listeners via DOM
+        document.querySelectorAll('[data-proj-action]').forEach(function(btn){
+          btn.onclick=function(){
+            var action=btn.dataset.projAction;
+            var pid=btn.dataset.projId;
+            if(action==='edit')openEditProjectModal(pid);
+            else if(action==='members')openProjectMembersModal(pid);
+            else if(action==='switch')selectProject(pid);
+          };
+        });
+      });
+    }).catch(function(e){
+      document.getElementById('proj-list').innerHTML=
+        '<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+    });
+}
+
+function buildProjBtn(action,pid){
+  var icons={
+    edit:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    members:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    switch:'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>'
+  };
+  var titles={edit:'Editar',members:'Miembros',switch:'Ir a proyecto'};
+  return '<button class="btn btn-ghost btn-sm" data-proj-action="'+action+'" data-proj-id="'+pid+'" title="'+titles[action]+'">'+icons[action]+'</button>';
+}
+
+function openEditProjectModal(pid){
+  var proj=null;
+  sbGet('projects','?id=eq.'+pid+'&limit=1').then(function(r){
+    proj=r[0];if(!proj)return;
+    var overlay=document.createElement('div');
+    overlay.className='modal-overlay';overlay.id='edit-proj-modal';
+    overlay.innerHTML=
+      '<div class="modal"><div class="modal-header">'+
+      '<div class="modal-title">Editar proyecto</div>'+
+      '<button class="btn btn-ghost btn-sm" id="ep-close">X</button></div>'+
+      '<div class="modal-body"><div class="form-grid">'+
+      '<div class="form-group"><label class="label">Codigo</label>'+
+      '<input type="text" class="input" id="ep-code" value="'+proj.code+'" disabled style="font-family:monospace"></div>'+
+      '<div class="form-group"><label class="label">Nombre *</label>'+
+      '<input type="text" class="input" id="ep-name" value="'+proj.name+'"></div>'+
+      '<div class="form-group full"><label class="label">Descripcion</label>'+
+      '<textarea class="input" id="ep-desc" rows="2">'+(proj.description||'')+'</textarea></div>'+
+      '<div class="form-group"><label class="label">Cliente</label>'+
+      '<input type="text" class="input" id="ep-client" value="'+(proj.client||'')+'"></div>'+
+      '<div class="form-group"><label class="label">Ubicacion</label>'+
+      '<input type="text" class="input" id="ep-location" value="'+(proj.location||'')+'"></div>'+
+      '<div class="form-group"><label class="label">Fase</label>'+
+      '<input type="text" class="input" id="ep-phase" value="'+(proj.phase||'')+'"></div>'+
+      '</div></div>'+
+      '<div class="modal-footer">'+
+      '<button class="btn" id="ep-cancel">Cancelar</button>'+
+      '<button class="btn btn-primary" id="ep-save">Actualizar</button>'+
+      '</div></div>';
+    document.getElementById('modal-container').appendChild(overlay);
+    document.getElementById('ep-close').onclick=function(){overlay.remove();};
+    document.getElementById('ep-cancel').onclick=function(){overlay.remove();};
+    document.getElementById('ep-save').onclick=function(){
+      var name=document.getElementById('ep-name').value.trim();
+      if(!name){toast('Nombre obligatorio.','error');return;}
+      sbPatch('projects','id=eq.'+pid,{
+        name:name,
+        description:document.getElementById('ep-desc').value||null,
+        client:document.getElementById('ep-client').value||null,
+        location:document.getElementById('ep-location').value||null,
+        phase:document.getElementById('ep-phase').value||null
+      }).then(function(){toast('Proyecto actualizado.');overlay.remove();renderProjects();})
+        .catch(function(e){toast(e.message,'error');});
+    };
+  });
+}
+
+function openProjectMembersModal(pid){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='members-modal';
+  overlay.innerHTML=
+    '<div class="modal"><div class="modal-header">'+
+    '<div class="modal-title">Miembros del proyecto</div>'+
+    '<button class="btn btn-ghost btn-sm" id="pm-close">X</button></div>'+
+    '<div class="modal-body">'+
+    '<div id="pm-list">'+loading()+'</div>'+
+    '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">'+
+    '<div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:8px">Agregar usuario</div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<select class="input" id="pm-user-sel" style="flex:1">'+
+    '<option value="">Seleccionar usuario...</option>'+
+    APP.users.map(function(u){return '<option value="'+u.id+'">'+u.full_name+' ('+u.email+')</option>';}).join('')+
+    '</select>'+
+    '<button class="btn btn-primary btn-sm" id="pm-add-btn">Agregar</button>'+
+    '</div></div></div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="pm-done">Cerrar</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('pm-close').onclick=function(){overlay.remove();};
+  document.getElementById('pm-done').onclick=function(){overlay.remove();renderProjects();};
+  document.getElementById('pm-add-btn').onclick=function(){
+    var uid=document.getElementById('pm-user-sel').value;
+    if(!uid){toast('Selecciona un usuario.','error');return;}
+    sbPost('project_members',{project_id:pid,user_id:uid,role:'member'})
+      .then(function(){toast('Usuario agregado.');loadProjMembers(pid);})
+      .catch(function(e){toast(e.message.indexOf('duplicate')>=0?'El usuario ya es miembro.':e.message,'error');});
+  };
+  loadProjMembers(pid);
+}
+
+function loadProjMembers(pid){
+  var el=document.getElementById('pm-list');
+  if(!el)return;
+  sbGet('project_members','?project_id=eq.'+pid+'&select=id,user_id,role,users(full_name,email,role)')
+    .then(function(members){
+      if(!members.length){el.innerHTML='<p style="font-size:12px;color:var(--text3)">Sin miembros registrados.</p>';return;}
+      el.innerHTML='<div style="max-height:200px;overflow-y:auto">'+
+        members.map(function(m){
+          var u=m.users||{};
+          return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)">'+
+            '<div style="flex:1"><div style="font-size:12px;font-weight:600;color:var(--text)">'+u.full_name+'</div>'+
+            '<div style="font-size:10px;color:var(--text3)">'+u.email+'</div></div>'+
+            roleBadge(u.role)+
+            '<button class="btn btn-ghost btn-sm" style="color:var(--red)" data-mid="'+m.id+'" data-remove-member>'+
+            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>'+
+            '</div>';
+        }).join('')+'</div>';
+      document.querySelectorAll('[data-remove-member]').forEach(function(btn){
+        btn.onclick=function(){
+          sbPatch('project_members','id=eq.'+btn.dataset.mid,{}).catch(function(){});
+          // Actually delete it
+          fetch(SUPA_URL+'/rest/v1/project_members?id=eq.'+btn.dataset.mid,{method:'DELETE',headers:H})
+            .then(function(){toast('Miembro eliminado.');loadProjMembers(pid);})
+            .catch(function(e){toast(e.message,'error');});
+        };
+      });
+    });
 }

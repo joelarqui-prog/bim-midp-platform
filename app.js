@@ -286,13 +286,13 @@ function loadDeliverables(){
       (canEdit||canDel?W.acc:0);
 
     var html=
-      '<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:hidden">'+
-      '<div class="midp-tbl-wrap" style="min-height:0">'+
-      '<table class="tbl midp-tbl" style="min-width:'+minW+'px"><thead><tr>'+
+      '<div class="midp-outer">'+
+      '<div class="midp-scroll">'+
+      '<table class="midp-tbl" style="min-width:'+minW+'px"><thead><tr>'+
       // Sticky col 1: Codigo
-      '<th class="sticky-col" style="left:0;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
+      '<th class="scol" style="left:0;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
       // Sticky col 2: Nombre
-      '<th class="sticky-col" style="left:'+stickyLeft2+'px;min-width:'+W.name+'px;max-width:'+W.name+'px;z-index:4">Nombre</th>'+
+      '<th class="scol" style="left:'+stickyLeft2+'px;min-width:'+W.name+'px;max-width:'+W.name+'px;z-index:4">Nombre</th>'+
       '<th style="min-width:'+W.status+'px">Estado</th>'+
       visGeneral.map(function(s){
         return '<th style="min-width:'+W.general+'px;white-space:nowrap;font-size:9px">'+s.name+'</th>';
@@ -309,8 +309,8 @@ function loadDeliverables(){
       }).join('')+
       (canEdit||canDel?'<th style="min-width:'+W.acc+'px">Acc.</th>':'')+
       '</tr><tr>'+
-      '<th class="sticky-col" style="left:0;background:var(--bg);z-index:4"></th>'+
-      '<th class="sticky-col" style="left:'+stickyLeft2+'px;background:var(--bg);z-index:4"></th>'+
+      '<th class="scol" style="left:0;background:var(--bg);z-index:4"></th>'+
+      '<th class="scol" style="left:'+stickyLeft2+'px;background:var(--bg);z-index:4"></th>'+
       '<th style="background:var(--bg)"></th>'+
       visGeneral.map(function(){return '<th style="background:var(--bg)"></th>';}).join('')+
       PHASE_GROUPS.map(function(ph){
@@ -359,11 +359,11 @@ function loadDeliverables(){
         }).join('');
 
         return '<tr>'+
-          '<td class="sticky-col" style="left:0;background:var(--surface)">'+
+          '<td class="scol" style="left:0;background:var(--surface)">'+
           '<span class="code-chip" style="font-size:8px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>'+
           (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.work_package+'</div>':'')+
           '</td>'+
-          '<td class="sticky-col" style="left:'+stickyLeft2+'px;background:var(--surface)">'+
+          '<td class="scol" style="left:'+stickyLeft2+'px;background:var(--surface)">'+
           '<div style="font-weight:600;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px" title="'+d.name+'">'+d.name+'</div>'+
           (d.description?'<div style="font-size:9px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.description+'</div>':'')+
           '</td>'+
@@ -376,9 +376,9 @@ function loadDeliverables(){
           '</tr>';
       }).join('')+
       '</tbody></table>'+
-      '</div>'+ // close midp-tbl-wrap
+      '</div>'+ // close midp-scroll
       '<div style="padding:8px 14px;background:var(--bg);font-size:10px;color:var(--text3);border-top:1px solid var(--border2);border-radius:0 0 var(--rl) var(--rl)">'+
-      items.length+' entregable(s) mostrado(s) de '+total+' totales · Supabase</div></div>';
+      items.length+' entregable(s) mostrado(s) de '+total+' totales</div></div>';
     document.getElementById('del-table').innerHTML=html;
   }).catch(function(e){
     document.getElementById('del-table').innerHTML='<div class="card"><div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div></div>';

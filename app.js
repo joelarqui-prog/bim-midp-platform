@@ -680,72 +680,65 @@ function exportMIDP(){
 // ── PROGRESS ──
 function renderProgress(){
   document.getElementById('topbar-actions').innerHTML='';
-  // Build discipline and package lists for filters
-  var discList=[];var pkgList=APP.packages.filter(function(p){return p.is_active;});
 
+  // Estructura fija: filtros arriba, contenido abajo
   document.getElementById('content').innerHTML=
     '<div class="page-header"><div><h1 class="page-title">Control de avance</h1>'+
-    '<p class="page-sub">Avance por fase RIBA</p></div></div>'+
-    '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:16px" id="progress-filters">'+
-    '<select class="input" style="width:130px;font-size:11px" id="pf-disc" onchange="applyProgressFilters()"><option value="">Disciplina</option></select>'+
-    '<select class="input" style="width:130px;font-size:11px" id="pf-pkg" onchange="applyProgressFilters()">'+
-    '<option value="">Paquete</option>'+
-    pkgList.map(function(p){return '<option value="'+p.code+'">'+p.code+' - '+p.name+'</option>';}).join('')+
-    '</select>'+
-    '<select class="input" style="width:130px;font-size:11px" id="pf-phase" onchange="applyProgressFilters()">'+
+    '<p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div>'+
+    // Filtros — siempre visibles
+    '<div class="card" style="padding:14px 16px;margin-bottom:16px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Filtros</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+    '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Disciplina</label>'+
+    '<select class="input" style="width:130px;font-size:11px" id="pf-disc" onchange="applyProgressFilters()">'+
+    '<option value="">Todas</option></select></div>'+
+    '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Paquete</label>'+
+    '<select class="input" style="width:140px;font-size:11px" id="pf-pkg" onchange="applyProgressFilters()">'+
+    '<option value="">Todos</option>'+
+    APP.packages.map(function(p){return '<option value="'+p.code+'">'+p.code+' - '+p.name+'</option>';}).join('')+
+    '</select></div>'+
+    '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Fase RIBA</label>'+
+    '<select class="input" style="width:160px;font-size:11px" id="pf-phase" onchange="applyProgressFilters()">'+
     '<option value="">Todas las fases</option>'+
     '<option value="riba2">RIBA 2 - Presentacion 0</option>'+
     '<option value="riba3">RIBA 3 - Presentacion 1</option>'+
     '<option value="riba4">RIBA 4 - Presentacion 2</option>'+
-    '</select>'+
-    '<button class="btn btn-sm" onclick="clearProgressFilters()">x Limpiar</button>'+
-    '</div>'+
+    '</select></div>'+
+    '<div style="padding-top:16px">'+
+    '<button class="btn btn-sm" onclick="clearProgressFilters()">x Limpiar</button></div>'+
+    '</div></div>'+
+    // Contenido dinamico
     '<div id="progress-content">'+loading()+'</div>';
 
+  // Cargar datos
   window._progressAllDels=null;window._progressProd=null;
-  // Set loading in progress-content
-  var pcEl=document.getElementById('progress-content');
-  if(pcEl)pcEl.innerHTML=loading();
   Promise.all([
     sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'),
     sbGet('production_units','?select=*').catch(function(){return[];})
   ]).then(function(res){
-    window._progressAllDels=res[0];window._progressProd=res[1];
-    // Populate discipline filter dynamically
+    window._progressAllDels=res[0];
+    window._progressProd=res[1];
+    // Poblar disciplinas
     var discs=[];
-    res[0].forEach(function(d){var disc=(d.field_values&&d.field_values.disciplina)||'';if(disc&&discs.indexOf(disc)<0)discs.push(disc);});
+    res[0].forEach(function(d){
+      var disc=(d.field_values&&d.field_values.disciplina)||'';
+      if(disc&&discs.indexOf(disc)<0)discs.push(disc);
+    });
     discs.sort();
     var discSel=document.getElementById('pf-disc');
     if(discSel){
-      discSel.innerHTML='<option value="">Disciplina</option>';
-      discs.forEach(function(d){var o=document.createElement('option');o.value=d;o.textContent=d;discSel.appendChild(o);});
+      discSel.innerHTML='<option value="">Todas</option>';
+      discs.forEach(function(d){
+        var o=document.createElement('option');
+        o.value=d;o.textContent=d;
+        discSel.appendChild(o);
+      });
     }
     applyProgressFilters();
   }).catch(function(e){
     var pce=document.getElementById('progress-content');
     if(pce)pce.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
   });
-}
-
-function clearProgressFilters(){
-  var d=document.getElementById('pf-disc');if(d)d.value='';
-  var p=document.getElementById('pf-pkg');if(p)p.value='';
-  var ph=document.getElementById('pf-phase');if(ph)ph.value='';
-  applyProgressFilters();
-}
-function applyProgressFilters(){
-  var disc=document.getElementById('pf-disc')?document.getElementById('pf-disc').value:'';
-  var pkg=document.getElementById('pf-pkg')?document.getElementById('pf-pkg').value:'';
-  var phase=document.getElementById('pf-phase')?document.getElementById('pf-phase').value:'';
-  var allDels=window._progressAllDels||[];
-  var prod=window._progressProd||[];
-  var deliverables=allDels.filter(function(d){
-    if(disc&&(d.field_values&&d.field_values.disciplina)!==disc)return false;
-    if(pkg&&d.work_package!==pkg)return false;
-    if(phase&&!d[phase+'_delivery_date'])return false;
-    return true;
-  });
-  renderProgressContent(deliverables,prod);
 }
 
 function renderProgressContent(deliverables,prod){

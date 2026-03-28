@@ -273,10 +273,22 @@ function loadDeliverables(){
     var W={code:170,name:160,status:105,general:90,lod:48,loi:44,fecha:80,acc:56};
     var stickyLeft2=W.code; // where Name starts
 
+    // Calcular min-width de la tabla basado en columnas
+    var minW = W.code + W.name + W.status +
+      (visGeneral.length * W.general) +
+      PHASE_GROUPS.reduce(function(acc,ph){
+        var vis=visiblePhaseSchemas(ph.key);
+        if(vis.some(function(s){return s.key===ph.key+'_lod';})) acc+=W.lod;
+        if(vis.some(function(s){return s.key===ph.key+'_loi';})) acc+=W.loi;
+        if(vis.some(function(s){return s.key===ph.key+'_delivery_date';})) acc+=W.fecha;
+        return acc;
+      },0) +
+      (canEdit||canDel?W.acc:0);
+
     var html=
-      '<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface)">'+
-      '<div class="midp-tbl-wrap">'+
-      '<table class="tbl midp-tbl"><thead><tr>'+
+      '<div style="border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:hidden">'+
+      '<div class="midp-tbl-wrap" style="min-height:0">'+
+      '<table class="tbl midp-tbl" style="min-width:'+minW+'px"><thead><tr>'+
       // Sticky col 1: Codigo
       '<th class="sticky-col" style="left:0;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
       // Sticky col 2: Nombre

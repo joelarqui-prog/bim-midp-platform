@@ -593,7 +593,17 @@ function openDeliverableModal(id){
     }).join('');
 
     var generalInputs=generalSchemas().map(function(s){
-      var colMap={nombre:'name',descripcion:'description',paquete:'work_package',formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',estado:'status',responsable:'assigned_to',predecesores:'predecessors'};
+      var colMap={
+        nombre:'name',titulo:'name',title:'name',
+        descripcion:'description',description:'description',
+        paquete:'work_package',
+        formato:'file_format',
+        tamano_lamina:'sheet_size',
+        escala:'scale',
+        estado:'status',
+        responsable:'assigned_to',
+        predecesores:'predecessors'
+      };
       var col=colMap[s.key];
       var val=d&&col?d[col]||'':'';
 
@@ -719,10 +729,34 @@ function saveDeliverable(id){
   var code=buildCode(fields);
   if(!code){toast('Completa los campos de codigo.','error');return;}
 
-  // Leer campos generales dinamicamente
-  var nameEl=document.getElementById('gen_nombre');
-  var name=nameEl?nameEl.value.trim():'';
-  if(!name){toast('El titulo es obligatorio.','error');return;}
+  // Leer nombre del entregable — el campo que mapea a la columna 'name' en BD
+  var NAME_KEYS=['nombre','titulo','title','name','contenedor'];
+  var nameVal='';
+  var nameFieldKey=null;
+  // 1. Buscar por keys conocidas
+  for(var ni=0;ni<NAME_KEYS.length;ni++){
+    var el_n=document.getElementById('gen_'+NAME_KEYS[ni]);
+    if(el_n&&el_n.value.trim()){nameVal=el_n.value.trim();nameFieldKey=NAME_KEYS[ni];break;}
+  }
+  // 2. Buscar cualquier schema general obligatorio que tenga un input renderizado
+  if(!nameVal){
+    var gSchemas=generalSchemas().filter(function(s){return s.is_required&&s.key!=='estado';});
+    for(var gi=0;gi<gSchemas.length;gi++){
+      var gEl=document.getElementById('gen_'+gSchemas[gi].key);
+      if(gEl&&gEl.value.trim()){nameVal=gEl.value.trim();nameFieldKey=gSchemas[gi].key;break;}
+    }
+  }
+  // 3. Buscar cualquier input gen_ que tenga valor
+  if(!nameVal){
+    var allGenInputs=document.querySelectorAll('[id^="gen_"]');
+    for(var ai=0;ai<allGenInputs.length;ai++){
+      if(allGenInputs[ai].tagName!=='SELECT'&&allGenInputs[ai].value.trim()){
+        nameVal=allGenInputs[ai].value.trim();break;
+      }
+    }
+  }
+  if(!nameVal){toast('El titulo del contenedor es obligatorio.','error');return;}
+  var name=nameVal;
 
   btn.disabled=true;btn.textContent='Guardando...';
   var dupQ='?project_id=eq.'+APP.project.id+'&code=eq.'+encodeURIComponent(code)+'&is_active=eq.true';
@@ -733,16 +767,34 @@ function saveDeliverable(id){
 
     function gv(key){var el=document.getElementById('gen_'+key);return el?el.value||null:null;}
 
+    // Smart gv — try by key and also by colMap reverse lookup
+    function gvSmart(targetCol){
+      // Try known keys first
+      var KNOWN={description:['descripcion','description'],work_package:['paquete','work_package'],
+        file_format:['formato','file_format'],sheet_size:['tamano_lamina','sheet_size'],
+        scale:['escala','scale'],status:['estado','status'],assigned_to:['responsable','assigned_to'],
+        predecessors:['predecesores','predecessors']};
+      var keys=KNOWN[targetCol]||[targetCol];
+      for(var ki=0;ki<keys.length;ki++){var e=document.getElementById('gen_'+keys[ki]);if(e&&e.value)return e.value;}
+      // Fallback: find schema that maps to this column
+      var colMap={nombre:'name',titulo:'name',title:'name',
+        descripcion:'description',description:'description',paquete:'work_package',
+        formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',
+        estado:'status',responsable:'assigned_to',predecesores:'predecessors'};
+      var matchKey=Object.keys(colMap).find(function(k){return colMap[k]===targetCol;});
+      if(matchKey){var e2=document.getElementById('gen_'+matchKey);if(e2&&e2.value)return e2.value;}
+      return null;
+    }
     var payload={
       project_id:APP.project.id,code:code,name:name,field_values:fields,created_by:APP.user.id,
-      description:gv('descripcion'),
-      work_package:gv('paquete'),
-      file_format:gv('formato'),
-      sheet_size:gv('tamano_lamina'),
-      scale:gv('escala'),
-      status:gv('estado')||'pending',
-      assigned_to:gv('responsable'),
-      predecessors:gv('predecesores')
+      description:gvSmart('description'),
+      work_package:gvSmart('work_package'),
+      file_format:gvSmart('file_format'),
+      sheet_size:gvSmart('sheet_size'),
+      scale:gvSmart('scale'),
+      status:gvSmart('status')||'pending',
+      assigned_to:gvSmart('assigned_to'),
+      predecessors:gvSmart('predecessors')
     };
 
     // Campos de fase — leer todos los schemas de fase
@@ -1293,7 +1345,15 @@ function saveSchema(id,grp){
     }
   }
 
-  var key=name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  var baseKey=name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  // Build unique key: hito fields get group prefix; if key exists, add numeric suffix
+  var key=baseKey;
+  if(!id){
+    if(grp!=='code'&&grp!=='general') key=grp+'_'+baseKey;
+    // Ensure uniqueness within this project's schemas
+    var existing=APP.schemas.filter(function(s){return s.key===key;});
+    if(existing.length>0) key=key+'_'+Date.now().toString().slice(-4);
+  }
   var payload={name:name,field_type:type,is_required:!!(document.getElementById('sch-req')&&document.getElementById('sch-req').checked),field_group:grp,project_id:APP.project.id};
   if(isCode){
     payload.key=key;

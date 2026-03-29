@@ -360,6 +360,8 @@ function nav(view,el){
   document.querySelectorAll('.sb-item').forEach(function(i){i.classList.remove('active');});
   if(el)el.classList.add('active');
   document.getElementById('bread-title').textContent=BREAD[view]||view;
+  var subEl=document.getElementById('bread-sub');
+  if(subEl)subEl.textContent=APP.project?'· '+APP.project.name:'';
   // Deliverables uses its own zone layout; others need padding
   var contentEl=document.getElementById('content');
   if(view==='deliverables'){
@@ -395,8 +397,6 @@ function renderDeliverables(){
   // ZONA SCROLL: solo la tabla
   document.getElementById('content').innerHTML=
     '<div class="del-fixed-zone">'+
-    '<div class="page-header"><div><h1 class="page-title">Entregables MIDP</h1>'+
-    '<p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div>'+
     '<div class="kpi-grid" id="kpi-area"><div class="loading"><div class="spinner"></div></div></div>'+
     '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'+
     '<div style="position:relative;max-width:180px">'+
@@ -931,8 +931,7 @@ function renderProgress(){
 
   // Estructura fija: filtros arriba, contenido abajo
   document.getElementById('content').innerHTML=
-    '<div class="page-header"><div><h1 class="page-title">Control de avance</h1>'+
-    '<p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div>'+
+    
     // Filtros — siempre visibles
     '<div class="card" style="padding:14px 16px;margin-bottom:16px">'+
     '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Filtros</div>'+
@@ -1048,52 +1047,7 @@ function renderProgressContent(deliverables,prod){
     });
 
     var html=
-      '<div class="page-header"><div><h1 class="page-title">Control de avance</h1><p class="page-sub">'+APP.project.name+'</p></div></div>'+
-      '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'+
-      kpiCard('Entregables','var(--brand-light)','var(--brand)',totalDels,'registrados')+
-      kpiCard('Completados','var(--green-light)','var(--green)',completedDels,(totalDels?Math.round(completedDels/totalDels*100):0)+'%')+
-      kpiCard('Unid. planificadas','#eff6ff','var(--brand)',totalPlan,'unidades')+
-      kpiCard('Unid. consumidas','var(--green-light)','var(--green)',totalCons,pctGen+'% avance')+
-      '</div>'+
-
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
-      phaseStats.map(function(ps){
-        var pct=ps.withDate>0?Math.round(ps.comp/ps.withDate*100):0;
-        return '<div class="card" style="padding:14px;border-top:3px solid '+ps.ph.color+'">'+
-          '<div style="font-size:10px;font-weight:700;color:'+ps.ph.color+';text-transform:uppercase;margin-bottom:8px">'+ps.ph.label+' · '+ps.ph.sub+'</div>'+
-          '<div style="font-size:26px;font-weight:700;font-family:\'Space Grotesk\',sans-serif;color:var(--text)">'+pct+'%</div>'+
-          '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+ps.comp+' de '+ps.withDate+' completados</div>'+
-          '<div class="prog-track" style="margin-top:8px"><div class="prog-fill" style="width:'+pct+'%;background:'+ps.ph.color+'"></div></div>'+
-          (ps.overdue>0?'<div style="font-size:9px;color:var(--red);margin-top:6px;font-weight:600">'+ps.overdue+' vencido(s) ⚠</div>':
-          '<div style="font-size:9px;color:var(--green);margin-top:6px">Al dia</div>')+
-          '</div>';
-      }).join('')+
-      '</div>'+
-
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">'+
-      '<div class="card" style="padding:18px">'+
-      '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">Avance por disciplina</div>'+
-      (Object.keys(byDisc).length?Object.entries(byDisc).map(function(e){
-        var pct=e[1].plan>0?Math.round(e[1].cons/e[1].plan*100):0;
-        return '<div class="prog-row">'+
-          '<div class="prog-label" style="font-size:10px;font-weight:600">'+e[0]+'</div>'+
-          '<div class="prog-bar-wrap"><div class="prog-track"><div class="prog-fill" style="width:'+pct+'%;background:'+progColor(pct)+'"></div></div>'+
-          '<div style="font-size:9px;color:var(--text3)">'+e[1].comp+'/'+e[1].total+' ent.</div></div>'+
-          '<div class="prog-pct">'+pct+'%</div></div>';
-      }).join(''):'<p style="color:var(--text3);font-size:12px">Sin datos.</p>')+
-      '</div>'+
-      '<div class="card" style="padding:18px">'+
-      '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">Por estado</div>'+
-      Object.entries(STATUS_CFG).map(function(e){
-        var cnt=deliverables.filter(function(d){return d.status===e[0];}).length;
-        var pct=totalDels?Math.round(cnt/totalDels*100):0;
-        var colors={approved:'var(--green)',issued:'var(--violet)',in_progress:'var(--brand)',for_review:'var(--amber)',pending:'var(--slate)',rejected:'var(--red)'};
-        return '<div class="stat-bar-row"><div class="stat-bar-label">'+e[1].label+'</div>'+
-          '<div class="stat-bar-track"><div class="stat-bar-fill" style="width:'+pct+'%;background:'+colors[e[0]]+'"></div></div>'+
-          '<div class="stat-bar-count">'+cnt+'</div></div>';
-      }).join('')+
-      '</div></div>'+
-
+  
       '<div class="card" style="overflow:hidden">'+
       '<table class="tbl"><thead><tr>'+
       '<th>Entregable</th><th>Disciplina</th>'+
@@ -1235,8 +1189,6 @@ function renderSchemas(){
     }
 
     var container=document.createElement('div');
-    container.innerHTML='<div class="page-header"><div><h1 class="page-title">Config. de campos</h1>'+
-      '<p class="page-sub">Codificacion, metadata e hitos del proyecto · '+APP.project.code+'</p></div></div>';
 
     allGroups.forEach(function(g){
       var fields=schemas.filter(function(s){return s.field_group===g.id;})
@@ -1444,10 +1396,6 @@ function renderUsers(){
   sbGet('users','?select=*&order=full_name.asc').then(function(users){
     APP.users=users;
     document.getElementById('content').innerHTML=
-      '<div class="page-header"><div><h1 class="page-title">Usuarios y permisos</h1>'+
-      '<p class="page-sub">'+users.length+' usuarios registrados</p></div>'+
-      (isAdmin?'<button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Nuevo usuario</button>':'')+
-      '</div>'+
       users.map(function(u){
         var perms=u.permissions||DEFAULT_PERMS;
         var isAdminUser=u.role==='admin';
@@ -1539,7 +1487,7 @@ function saveUser(id){
 // ── PAQUETES ──
 function renderPackages(){
   document.getElementById('topbar-actions').innerHTML='<button class="btn btn-primary btn-sm" onclick="openPackageModal(null)">+ Nuevo paquete</button>';
-  document.getElementById('content').innerHTML='<div class="page-header"><div><h1 class="page-title">Paquetes de trabajo</h1><p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div><div id="pkg-list">'+loading()+'</div>';
+  document.getElementById('content').innerHTML='<div id="pkg-list">'+loading()+'</div>';
   loadPackages();
 }
 
@@ -1684,10 +1632,7 @@ function deletePackage(pid){
 function renderProjects(){
   document.getElementById('topbar-actions').innerHTML=
     '<button class="btn btn-primary btn-sm" onclick="openNewProjectModal()">+ Nuevo proyecto</button>';
-  document.getElementById('content').innerHTML=
-    '<div class="page-header"><div><h1 class="page-title">Proyectos</h1>'+
-    '<p class="page-sub">Gestion de proyectos de la organizacion</p></div></div>'+
-    '<div id="proj-list">'+loading()+'</div>';
+  document.getElementById('content').innerHTML='<div id="proj-list">'+loading()+'</div>';
   sbGet('projects','?is_active=eq.true&order=created_at.desc')
     .then(function(projects){
       if(!projects.length){

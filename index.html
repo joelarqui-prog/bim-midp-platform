@@ -81,7 +81,7 @@ textarea.input{resize:vertical;min-height:70px}
 .sb-nav{flex:1;padding:8px;overflow:hidden}.sb-section{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;padding:10px 10px 4px}
 .sb-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r);font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;transition:all .12s;margin-bottom:1px;border:none;background:none;width:100%;text-align:left;font-family:'Inter',sans-serif}.sb-item:hover{background:var(--bg);color:var(--text)}.sb-item.active{background:var(--brand-light);color:var(--brand)}.sb-item svg{width:15px;height:15px;flex-shrink:0;opacity:.6}.sb-item.active svg{opacity:1}
 .sb-user{padding:10px;border-top:1px solid var(--border2)}.sb-user-inner{display:flex;align-items:center;gap:8px;padding:6px 8px}.sb-avatar{width:30px;height:30px;border-radius:50%;background:var(--brand-light);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--brand);flex-shrink:0}.sb-uname{font-size:12px;font-weight:600;color:var(--text)}.sb-logout{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:11px;color:var(--red);cursor:pointer;border-radius:var(--r);border:none;background:none;width:100%;font-family:'Inter',sans-serif;margin-top:2px}.sb-logout:hover{background:var(--red-light)}
-.topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;background:var(--surface)}.topbar-bread{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}.topbar-bread span{color:var(--text2);font-weight:500}.topbar-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.topbar{height:48px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0;background:var(--surface)}.topbar-bread{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}.topbar-bread span{color:var(--text);font-weight:700;font-size:15px;font-family:'Space Grotesk',sans-serif}.topbar-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
 .main{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden}.content{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;animation:fadeIn .2s ease-out}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}.page-title{font-size:22px;color:var(--text)}.page-sub{font-size:12px;color:var(--text3);margin-top:2px}
@@ -209,7 +209,7 @@ textarea.input{resize:vertical;min-height:70px}
     </aside>
     <div class="main">
       <div class="topbar">
-        <div class="topbar-bread"><span class="online-dot"></span>&#9679; <span id="bread-title">Entregables</span></div>
+        <div class="topbar-bread"><span id="bread-title">Entregables</span><span id="bread-sub" style="font-size:11px;color:var(--text3);font-weight:400;font-family:Inter,sans-serif;margin-left:8px"></span></div>
         <div class="topbar-actions" id="topbar-actions"></div>
       </div>
       <div class="content" id="content"></div>
@@ -219,6 +219,6 @@ textarea.input{resize:vertical;min-height:70px}
 
 <div class="toast" id="toast"></div>
 <div id="modal-container"></div>
-<script src="app.js?v=1774768644"></script>
+<script src="app.js?v=1774769533"></script>
 </body>
 </html>

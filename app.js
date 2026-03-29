@@ -12,11 +12,41 @@ var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can
 function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true;return !!(APP.user.permissions||DEFAULT_PERMS)[a];}
 
 // Grupos de fases RIBA — fijos, siempre los mismos 3
-var PHASE_GROUPS=[
-  {key:'riba2',label:'RIBA 2',sub:'Presentacion 0',color:'#06b6d4'},
-  {key:'riba3',label:'RIBA 3',sub:'Presentacion 1',color:'#3b82f6'},
-  {key:'riba4',label:'RIBA 4',sub:'Presentacion 2',color:'#8b5cf6'}
-];
+// PHASE_GROUPS is now dynamic — built from schemas
+// Use getPhaseGroups() instead of PHASE_GROUPS directly
+var PHASE_COLORS=['#06b6d4','#3b82f6','#8b5cf6','#f59e0b','#10b981','#f43f5e','#6366f1'];
+var KNOWN_HITO_LABELS={
+  riba2:{label:'RIBA 2',sub:'Presentacion 0'},
+  riba3:{label:'RIBA 3',sub:'Presentacion 1'},
+  riba4:{label:'RIBA 4',sub:'Presentacion 2'}
+};
+
+function getPhaseGroups(){
+  // Discover all field_groups that are not 'code' or 'general'
+  var seen={};var groups=[];
+  (APP.schemas||[]).forEach(function(s){
+    var g=s.field_group;
+    if(!g||g==='code'||g==='general')return;
+    if(seen[g])return;
+    seen[g]=true;
+    var known=KNOWN_HITO_LABELS[g];
+    var label=known?known.label:null;
+    var sub=known?known.sub:'';
+    if(!label){
+      // Try to get from description field (hito:Name format)
+      var sample=(APP.schemas||[]).find(function(s2){return s2.field_group===g&&s2.description&&s2.description.indexOf('hito:')===0;});
+      label=sample?sample.description.replace('hito:','').trim().split(' - ')[0]:
+        g.replace(/_/g,' ').replace(/\w/g,function(c){return c.toUpperCase();});
+    }
+    groups.push({key:g,label:label,sub:sub});
+  });
+  // Sort: known hitos first by defined order, then custom alphabetically
+  var ORDER={riba2:1,riba3:2,riba4:3};
+  groups.sort(function(a,b){return (ORDER[a.key]||99+a.key.charCodeAt(0))-(ORDER[b.key]||99+b.key.charCodeAt(0));});
+  // Assign colors
+  groups.forEach(function(g,i){g.color=PHASE_COLORS[i%PHASE_COLORS.length];});
+  return groups;
+}
 
 var PERM_CONFIG=[
   {key:'can_create_deliverables',label:'Crear entregables'},
@@ -420,11 +450,11 @@ function loadDeliverables(){
     // Calcular min-width de la tabla basado en columnas
     var minW = W.code + W.name + W.status +
       (visGeneral.length * W.general) +
-      PHASE_GROUPS.reduce(function(acc,ph){
+      getPhaseGroups().reduce(function(acc,ph){
         var vis=visiblePhaseSchemas(ph.key);
-        if(vis.some(function(s){return s.key===ph.key+'_lod';})) acc+=W.lod;
-        if(vis.some(function(s){return s.key===ph.key+'_loi';})) acc+=W.loi;
-        if(vis.some(function(s){return s.key===ph.key+'_delivery_date';})) acc+=W.fecha;
+        vis.forEach(function(s){
+          acc+=(s.field_type==='date'?W.fecha:(s.key.indexOf('_lod')>=0||s.key.indexOf('_loi')>=0?W.lod:W.general));
+        });
         return acc;
       },0) +
       (canEdit||canDel?W.acc:0);
@@ -441,15 +471,11 @@ function loadDeliverables(){
       visGeneral.map(function(s){
         return '<th style="min-width:'+W.general+'px;white-space:nowrap;font-size:9px">'+s.name+'</th>';
       }).join('')+
-      PHASE_GROUPS.map(function(ph){
+      getPhaseGroups().map(function(ph){
         var vis=visiblePhaseSchemas(ph.key);
-        var hasLOD=vis.some(function(s){return s.key===ph.key+'_lod';});
-        var hasLOI=vis.some(function(s){return s.key===ph.key+'_loi';});
-        var hasFecha=vis.some(function(s){return s.key===ph.key+'_delivery_date';});
-        var span=(hasLOD?1:0)+(hasLOI?1:0)+(hasFecha?1:0);
-        if(!span)return '';
-        return '<th colspan="'+span+'" style="text-align:center;background:'+ph.color+'15;color:'+ph.color+';border-left:2px solid '+ph.color+'50;font-size:10px;white-space:nowrap">'+
-          ph.label+' · '+ph.sub+'</th>';
+        if(!vis.length)return '';
+        return '<th colspan="'+vis.length+'" style="text-align:center;background:'+ph.color+'15;color:'+ph.color+';border-left:2px solid '+ph.color+'50;font-size:10px;white-space:nowrap">'+
+          ph.label+(ph.sub?' · '+ph.sub:'')+'</th>';
       }).join('')+
       (canEdit||canDel?'<th style="min-width:'+W.acc+'px">Acc.</th>':'')+
       '</tr><tr>'+
@@ -457,16 +483,14 @@ function loadDeliverables(){
       '<th class="scol" style="left:'+stickyLeft2+'px;background:var(--bg);z-index:4"></th>'+
       '<th style="background:var(--bg)"></th>'+
       visGeneral.map(function(){return '<th style="background:var(--bg)"></th>';}).join('')+
-      PHASE_GROUPS.map(function(ph){
+      getPhaseGroups().map(function(ph){
         var vis=visiblePhaseSchemas(ph.key);
-        var cells='';
-        if(vis.some(function(s){return s.key===ph.key+'_lod';}))
-          cells+='<th style="font-size:9px;background:'+ph.color+'10;min-width:'+W.lod+'px;border-left:2px solid '+ph.color+'40;white-space:nowrap">LOD</th>';
-        if(vis.some(function(s){return s.key===ph.key+'_loi';}))
-          cells+='<th style="font-size:9px;background:'+ph.color+'10;min-width:'+W.loi+'px;white-space:nowrap">LOI</th>';
-        if(vis.some(function(s){return s.key===ph.key+'_delivery_date';}))
-          cells+='<th style="font-size:9px;background:'+ph.color+'10;min-width:'+W.fecha+'px;white-space:nowrap">Fecha entrega</th>';
-        return cells;
+        if(!vis.length)return '';
+        return vis.map(function(s,i){
+          var shortName=s.name.replace(ph.label+' - ','').replace(ph.label+'-','');
+          var minW=s.field_type==='date'?W.fecha:(shortName.length<=3?W.lod:W.general);
+          return '<th style="font-size:9px;background:'+ph.color+'10;min-width:'+minW+'px;'+(i===0?'border-left:2px solid '+ph.color+'40':'')+'white-space:nowrap">'+shortName+'</th>';
+        }).join('');
       }).join('')+
       (canEdit||canDel?'<th style="background:var(--bg)"></th>':'')+
       '</tr></thead><tbody>'+
@@ -482,24 +506,20 @@ function loadDeliverables(){
             (val||'<span style="color:var(--text3)">--</span>')+'</td>';
         }).join('');
 
-        var phaseCells=PHASE_GROUPS.map(function(ph){
+        var phaseCells=getPhaseGroups().map(function(ph){
           var vis=visiblePhaseSchemas(ph.key);
-          var cells='';
-          if(vis.some(function(s){return s.key===ph.key+'_lod';})){
-            var lod=d[ph.key+'_lod']||'--';
-            cells+='<td style="border-left:2px solid '+ph.color+'30;font-size:10px;font-weight:600;color:'+ph.color+';text-align:center">'+lod+'</td>';
-          }
-          if(vis.some(function(s){return s.key===ph.key+'_loi';})){
-            var loi=d[ph.key+'_loi']||'--';
-            cells+='<td style="font-size:10px;text-align:center;color:var(--text2)">'+loi+'</td>';
-          }
-          if(vis.some(function(s){return s.key===ph.key+'_delivery_date';})){
-            var dt=d[ph.key+'_delivery_date'];
-            var isOverdue=dt&&new Date(dt)<new Date()&&d.status!=='approved'&&d.status!=='issued';
-            cells+='<td style="font-size:9px;'+(isOverdue?'color:var(--red);font-weight:600':'color:var(--text3)')+'">'+
-              fmtDateShort(dt)+(isOverdue?' ⚠':'')+'</td>';
-          }
-          return cells;
+          if(!vis.length)return '';
+          return vis.map(function(s,i){
+            var val=d[s.key]||'';
+            var isDate=s.field_type==='date';
+            var isOverdue=isDate&&val&&new Date(val)<new Date()&&d.status!=='approved'&&d.status!=='issued';
+            var display=isDate?fmtDateShort(val):(val||'--');
+            var style='font-size:10px;white-space:nowrap;'+(i===0?'border-left:2px solid '+ph.color+'30;':'');
+            if(isOverdue)style+='color:var(--red);font-weight:600;';
+            else if(isDate)style+='color:var(--text3);';
+            else if(s.key.indexOf('_lod')>=0||s.key.indexOf('_loi')>=0)style+='text-align:center;font-weight:700;color:'+ph.color+';';
+            return '<td style="'+style+'">'+display+(isOverdue?' ⚠':'')+'</td>';
+          }).join('');
         }).join('');
 
         return '<tr>'+
@@ -610,7 +630,7 @@ function openDeliverableModal(id){
     }).join('');
 
     // Seccion 3: Fases RIBA — dinamicas
-    var phaseBlocks=PHASE_GROUPS.map(function(ph){
+    var phaseBlocks=getPhaseGroups().map(function(ph){
       var fields=phaseSchemas(ph.key);
       if(!fields.length)return '';
       var inputs=fields.map(function(s){
@@ -726,7 +746,7 @@ function saveDeliverable(id){
     };
 
     // Campos de fase — leer todos los schemas de fase
-    PHASE_GROUPS.forEach(function(ph){
+    getPhaseGroups().forEach(function(ph){
       phaseSchemas(ph.key).forEach(function(s){
         var el=document.getElementById('ph_'+s.key);
         payload[s.key]=el?el.value||null:null;
@@ -923,7 +943,7 @@ function renderProgressContent(deliverables,prod){
       if(d.status==='approved'||d.status==='issued')byDisc[disc].comp++;
     });
 
-    var phaseStats=PHASE_GROUPS.map(function(ph){
+    var phaseStats=getPhaseGroups().map(function(ph){
       var withDate=deliverables.filter(function(d){return !!d[ph.key+'_delivery_date'];}).length;
       var comp=deliverables.filter(function(d){return d[ph.key+'_delivery_date']&&(d.status==='approved'||d.status==='issued');}).length;
       var overdue=deliverables.filter(function(d){
@@ -983,14 +1003,14 @@ function renderProgressContent(deliverables,prod){
       '<table class="tbl"><thead><tr>'+
       '<th>Entregable</th><th>Disciplina</th>'+
       '<th>Plan.</th><th>Cons.</th><th>Avance</th>'+
-      PHASE_GROUPS.map(function(ph){return '<th style="color:'+ph.color+';font-size:9px">'+ph.label+' Fecha</th>';}).join('')+
+      getPhaseGroups().map(function(ph){return '<th style="color:'+ph.color+';font-size:9px">'+ph.label+' Fecha</th>';}).join('')+
       '<th>Estado</th>'+(canProg?'<th>Registrar</th>':'')+
       '</tr></thead><tbody>'+
       deliverables.map(function(d){
         var p=prodMap[d.id]||{plan:0,cons:0};
         var pct=p.plan>0?Math.round(p.cons/p.plan*100):0;
         var today=new Date();
-        var phaseDates=PHASE_GROUPS.map(function(ph){
+        var phaseDates=getPhaseGroups().map(function(ph){
           var dt=d[ph.key+'_delivery_date'];
           if(!dt)return '<td style="font-size:10px;color:var(--text3)">--</td>';
           var overdue=new Date(dt)<today&&d.status!=='approved'&&d.status!=='issued';
@@ -1055,7 +1075,7 @@ function renderSchemas(){
 
     // Fixed groups
     var fixedGroups=[
-      {id:'code',   label:'Codificacion',        color:'var(--brand)', desc:'Campos que forman el codigo del entregable', fixed:true},
+      {id:'code',   label:'Codificacion',        color:'var(--brand)', desc:'Campos que forman el codigo del entregable', fixed:false},
       {id:'general',label:'Informacion general', color:'var(--slate)', desc:'Metadata del contenedor de informacion',     fixed:false}
     ];
 

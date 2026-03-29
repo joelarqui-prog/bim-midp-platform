@@ -1047,7 +1047,7 @@ function renderProgressContent(deliverables,prod){
       return {ph:ph,withDate:withDate,comp:comp,overdue:overdue};
     });
 
-    document.getElementById('content').innerHTML=
+    var html=
       '<div class="page-header"><div><h1 class="page-title">Control de avance</h1><p class="page-sub">'+APP.project.name+'</p></div></div>'+
       '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'+
       kpiCard('Entregables','var(--brand-light)','var(--brand)',totalDels,'registrados')+

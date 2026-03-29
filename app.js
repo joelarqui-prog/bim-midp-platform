@@ -382,11 +382,14 @@ function renderDeliverables(){
       return '<select class="input" style="width:110px;font-size:11px" onchange="setFieldFilter(\''+s.key+'\',this.value)">'+opts+'</select>';
     }).join('');
 
+  // ZONA FIJA: header + KPIs + filtros
+  // ZONA SCROLL: solo la tabla
   document.getElementById('content').innerHTML=
+    '<div class="del-fixed-zone">'+
     '<div class="page-header"><div><h1 class="page-title">Entregables MIDP</h1>'+
     '<p class="page-sub">'+(APP.project?APP.project.name:'')+'</p></div></div>'+
     '<div class="kpi-grid" id="kpi-area"><div class="loading"><div class="spinner"></div></div></div>'+
-    '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">'+
+    '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'+
     '<div style="position:relative;max-width:180px">'+
     '<input class="input" style="padding-left:30px" placeholder="Buscar codigo..." oninput="APP.search=this.value;loadDeliverables()">'+
     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>'+
@@ -399,8 +402,9 @@ function renderDeliverables(){
     APP.packages.map(function(p){return '<option value="'+p.code+'"'+(APP.packageFilter===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
     '</select>'+
     '<button class="btn btn-sm" onclick="clearFilters()">x Limpiar</button>'+
-    '<button class="btn btn-sm" onclick="loadDeliverables()">&#8635;</button></div>'+
-    '<div id="del-table">'+loading()+'</div>';
+    '<button class="btn btn-sm" onclick="loadDeliverables()">&#8635;</button>'+
+    '</div></div>'+  // close del-fixed-zone
+    '<div class="del-scroll-zone" id="del-table">'+loading()+'</div>';
   loadDeliverables();
 }
 
@@ -447,10 +451,10 @@ function loadDeliverables(){
 
     if(items.length===0){
       document.getElementById('del-table').innerHTML=
-        '<div class="card"><div class="empty">'+
+        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 16px;text-align:center">'+
         '<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>'+
         '<div class="empty-title">Sin entregables</div>'+
-        '<div class="empty-desc">No hay resultados para los filtros actuales.</div></div></div>';
+        '<div class="empty-desc">No hay resultados para los filtros actuales.</div></div>';
       return;
     }
 
@@ -476,9 +480,7 @@ function loadDeliverables(){
       (canEdit||canDel?W.acc:0);
 
     var html=
-      '<div class="midp-outer">'+
-      '<div class="midp-scroll">'+
-      '<table class="midp-tbl" style="min-width:'+minW+'px"><thead><tr>'+
+      '<table class="midp-tbl" style="min-width:'+minW+'px;width:max-content"><thead><tr>'+
       // Sticky col 1: Codigo
       '<th class="scol" style="left:0;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
       // Sticky col 2: Nombre
@@ -556,10 +558,16 @@ function loadDeliverables(){
           '</tr>';
       }).join('')+
       '</tbody></table>'+
-      '</div>'+ // close midp-scroll
-      '<div style="padding:8px 14px;background:var(--bg);font-size:10px;color:var(--text3);border-top:1px solid var(--border2);border-radius:0 0 var(--rl) var(--rl)">'+
-      items.length+' entregable(s) mostrado(s) de '+total+' totales</div></div>';
-    document.getElementById('del-table').innerHTML=html;
+      '</table>'+
+      '<div style="padding:8px 0;font-size:10px;color:var(--text3);margin-top:4px">'+
+      items.length+' entregable(s) mostrado(s) de '+total+' totales</div>';
+    // Wrap table in a styled container but keep it inside del-scroll-zone
+    var wrapper=document.createElement('div');
+    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:visible';
+    wrapper.innerHTML=html;
+    var dt=document.getElementById('del-table');
+    dt.innerHTML='';
+    dt.appendChild(wrapper);
   }).catch(function(e){
     document.getElementById('del-table').innerHTML='<div class="card"><div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div></div>';
   });

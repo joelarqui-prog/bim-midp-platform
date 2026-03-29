@@ -107,8 +107,11 @@ function getFieldVal(d,s){
     if(col==='assigned_to'){var u=APP.users.find(function(u){return u.id===d[col];});return u?u.full_name:'';}
     return col?d[col]||'':'';
   }
-  // phase field — direct column on deliverable
-  return d[s.key]||'';
+  // phase field — columna directa, normalizando prefijo del hito
+  // s.key puede ser 'lod' o 'riba2_lod'; la columna en BD siempre es 'riba2_lod'
+  var pGroup=s.field_group;
+  var dbKey=s.key.indexOf(pGroup+'_')===0?s.key:pGroup+'_'+s.key;
+  return d[dbKey]||d[s.key]||'';
 }
 
 // ── AUTH ──
@@ -690,8 +693,9 @@ function openDeliverableModal(id){
       var fields=phaseSchemas(ph.key);
       if(!fields.length)return '';
       var inputs=fields.map(function(s){
-        var val=d&&d[s.key]||'';
-        var isFull=s.key===ph.key+'_doc_assoc';
+        var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
+        var val=d?(d[dbCol]||d[s.key]||''):'';
+        var isFull=dbCol===ph.key+'_doc_assoc'||s.key===ph.key+'_doc_assoc';
         var inp='';
         if(s.key.indexOf('_doc_assoc')>=0){
           // Doc. asociada = dropdown de entregables tipo MOD (Modelo)
@@ -841,10 +845,17 @@ function saveDeliverable(id){
     };
 
     // Campos de fase — leer todos los schemas de fase
+    // La columna en BD siempre tiene el prefijo del hito: {ph.key}_{campo}
+    // El key del schema puede o no tener el prefijo, normalizar aqui
     getPhaseGroups().forEach(function(ph){
       phaseSchemas(ph.key).forEach(function(s){
         var el=document.getElementById('ph_'+s.key);
-        payload[s.key]=el?el.value||null:null;
+        var val=el?el.value||null:null;
+        // Determinar la columna correcta en BD
+        // Si el key ya empieza con el prefijo del grupo, usarlo directo
+        // Si no, agregar el prefijo para mapear a la columna correcta
+        var dbCol=s.key.indexOf(ph.key+'_')===0 ? s.key : ph.key+'_'+s.key;
+        payload[dbCol]=val;
       });
     });
 

@@ -460,7 +460,7 @@ function loadDeliverables(){
     var phaseColKeys=['lod','loi','delivery_date'];
 
     // Sticky col widths
-    var W={code:170,name:160,status:105,general:90,lod:48,loi:44,fecha:80,acc:56};
+    var W={code:150,name:140,status:95,general:80,lod:42,loi:38,fecha:74,acc:48};
     var stickyLeft2=W.code; // where Name starts
 
     // Calcular min-width de la tabla basado en columnas

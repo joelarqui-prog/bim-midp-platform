@@ -639,6 +639,18 @@ function openDeliverableModal(id){
         '<input type="text" class="input" id="gen_'+s.key+'" value="'+val+'" placeholder="'+(s.placeholder||'')+'"></div>';
     }).join('');
 
+    // Si no hay campos en general, mostrar campo de nombre minimo
+    var hasNameField=generalSchemas().some(function(s){
+      return ['nombre','titulo','title','name','contenedor'].indexOf(s.key)>=0;
+    });
+    if(!hasNameField){
+      var existingVal=d?d.name||'':'';
+      generalInputs='<div class="form-group full">'+
+        '<label class="label">Nombre del entregable *</label>'+
+        '<input type="text" class="input" id="gen_nombre" value="'+existingVal+'" placeholder="Nombre descriptivo del entregable">'+
+        '</div>'+generalInputs;
+    }
+
     // Seccion 3: Fases RIBA — dinamicas
     var phaseBlocks=getPhaseGroups().map(function(ph){
       var fields=phaseSchemas(ph.key);
@@ -730,32 +742,29 @@ function saveDeliverable(id){
   if(!code){toast('Completa los campos de codigo.','error');return;}
 
   // Leer nombre del entregable — el campo que mapea a la columna 'name' en BD
-  var NAME_KEYS=['nombre','titulo','title','name','contenedor'];
+  // Leer nombre del entregable de cualquier fuente disponible
   var nameVal='';
-  var nameFieldKey=null;
-  // 1. Buscar por keys conocidas
+  // 1. Buscar en campos generales (gen_*) por keys de nombre conocidas
+  var NAME_KEYS=['nombre','titulo','title','name','contenedor','titulo1'];
   for(var ni=0;ni<NAME_KEYS.length;ni++){
     var el_n=document.getElementById('gen_'+NAME_KEYS[ni]);
-    if(el_n&&el_n.value.trim()){nameVal=el_n.value.trim();nameFieldKey=NAME_KEYS[ni];break;}
+    if(el_n&&el_n.value.trim()){nameVal=el_n.value.trim();break;}
   }
-  // 2. Buscar cualquier schema general obligatorio que tenga un input renderizado
+  // 2. Buscar en CUALQUIER input gen_ que no sea select ni estado
   if(!nameVal){
-    var gSchemas=generalSchemas().filter(function(s){return s.is_required&&s.key!=='estado';});
-    for(var gi=0;gi<gSchemas.length;gi++){
-      var gEl=document.getElementById('gen_'+gSchemas[gi].key);
-      if(gEl&&gEl.value.trim()){nameVal=gEl.value.trim();nameFieldKey=gSchemas[gi].key;break;}
-    }
+    document.querySelectorAll('[id^="gen_"]').forEach(function(el){
+      if(!nameVal&&el.tagName!=='SELECT'&&el.id!=='gen_estado'&&el.value.trim())
+        nameVal=el.value.trim();
+    });
   }
-  // 3. Buscar cualquier input gen_ que tenga valor
+  // 3. Buscar en campos de codificacion (schema-field) — si todo falla usar el codigo
   if(!nameVal){
-    var allGenInputs=document.querySelectorAll('[id^="gen_"]');
-    for(var ai=0;ai<allGenInputs.length;ai++){
-      if(allGenInputs[ai].tagName!=='SELECT'&&allGenInputs[ai].value.trim()){
-        nameVal=allGenInputs[ai].value.trim();break;
-      }
-    }
+    document.querySelectorAll('.schema-field').forEach(function(el){
+      if(!nameVal&&el.value.trim())nameVal=el.value.trim();
+    });
   }
-  if(!nameVal){toast('El titulo del contenedor es obligatorio.','error');return;}
+  // 4. Ultimo recurso: usar el codigo generado
+  if(!nameVal) nameVal=code;
   var name=nameVal;
 
   btn.disabled=true;btn.textContent='Guardando...';

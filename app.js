@@ -360,6 +360,15 @@ function nav(view,el){
   document.querySelectorAll('.sb-item').forEach(function(i){i.classList.remove('active');});
   if(el)el.classList.add('active');
   document.getElementById('bread-title').textContent=BREAD[view]||view;
+  // Deliverables uses its own zone layout; others need padding
+  var contentEl=document.getElementById('content');
+  if(view==='deliverables'){
+    contentEl.style.padding='0';
+    contentEl.style.overflowY='hidden';
+  } else {
+    contentEl.style.padding='20px';
+    contentEl.style.overflowY='auto';
+  }
   ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects})[view]&&
   ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects})[view]();
 }
@@ -562,11 +571,12 @@ function loadDeliverables(){
       '<div style="padding:8px 0;font-size:10px;color:var(--text3);margin-top:4px">'+
       items.length+' entregable(s) mostrado(s) de '+total+' totales</div>';
     // Wrap table in a styled container but keep it inside del-scroll-zone
-    var wrapper=document.createElement('div');
-    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:visible';
-    wrapper.innerHTML=html;
     var dt=document.getElementById('del-table');
     dt.innerHTML='';
+    // Outer border container — must not clip the table
+    var wrapper=document.createElement('div');
+    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);display:inline-block;min-width:100%';
+    wrapper.innerHTML=html;
     dt.appendChild(wrapper);
   }).catch(function(e){
     document.getElementById('del-table').innerHTML='<div class="card"><div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div></div>';

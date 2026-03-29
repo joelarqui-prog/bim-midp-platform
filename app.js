@@ -1,4 +1,4 @@
-// MIDP BIM Platform - app.js v3.0 — Campos completamente configurables
+// Unify Management - app.js v3.0 — Campos completamente configurables
 var SUPA_URL='https://rrzlwvqlzhmzyrramjcw.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyemx3dnFsemhtenlycmFtamN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1ODIyMzYsImV4cCI6MjA5MDE1ODIzNn0.IeZlvcT1GaqQybZRbxyjgoEFfJ6Z6BVxbZRgLPzi2Fw';
 var H={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'};
@@ -240,6 +240,7 @@ function showApp(user){
   var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdmin?'flex':'none';
   var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdmin?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
+  restoreSidebarState();
   nav('deliverables',document.querySelector('.sb-item'));
 }
 
@@ -340,6 +341,21 @@ document.addEventListener('DOMContentLoaded',function(){
 
 // ── NAV ──
 var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos'};
+// ── SIDEBAR COLLAPSE ──
+function toggleSidebar(){
+  var sb=document.querySelector('.sidebar');
+  if(!sb)return;
+  sb.classList.toggle('collapsed');
+  try{localStorage.setItem('midp_sb_collapsed',sb.classList.contains('collapsed')?'1':'0');}catch(e){}
+}
+function restoreSidebarState(){
+  try{
+    if(localStorage.getItem('midp_sb_collapsed')==='1'){
+      var sb=document.querySelector('.sidebar');if(sb)sb.classList.add('collapsed');
+    }
+  }catch(e){}
+}
+
 function nav(view,el){
   document.querySelectorAll('.sb-item').forEach(function(i){i.classList.remove('active');});
   if(el)el.classList.add('active');
@@ -524,7 +540,7 @@ function loadDeliverables(){
 
         return '<tr>'+
           '<td class="scol" style="left:0;background:var(--surface)">'+
-          '<span class="code-chip" style="font-size:8px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>'+
+          '<span class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>'+
           (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.work_package+'</div>':'')+
           '</td>'+
           '<td class="scol" style="left:'+stickyLeft2+'px;background:var(--surface)">'+

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MIDP BIM Platform</title>
+<title>Unify Management</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -56,7 +56,22 @@ textarea.input{resize:vertical;min-height:70px}
 .proj-logout:hover{color:#fff;background:rgba(255,255,255,.08)}
 /* APP */
 #app{display:none;height:100vh;overflow:hidden}.shell{display:flex;height:100%}
-.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;height:100%;overflow:hidden}
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;height:100%;overflow:hidden;transition:width .25s cubic-bezier(.4,0,.2,1)}
+.sidebar.collapsed{width:52px}
+.sidebar.collapsed .sb-logo-inner .sb-title,.sidebar.collapsed .sb-logo-inner .sb-sub{display:none}
+.sidebar.collapsed .sb-proj{display:none}
+.sidebar.collapsed .sb-section{display:none}
+.sidebar.collapsed .sb-item span,.sidebar.collapsed .sb-item-label{display:none}
+.sidebar.collapsed .sb-item{justify-content:center;padding:10px 0}
+.sidebar.collapsed .sb-item svg{opacity:.7;width:18px;height:18px}
+.sidebar.collapsed .sb-user-inner .sb-uname,.sidebar.collapsed .sb-user-inner .badge{display:none}
+.sidebar.collapsed .sb-logout span,.sidebar.collapsed .sb-logout-label{display:none}
+.sidebar.collapsed .sb-logout{justify-content:center;padding:8px 0}
+.sidebar.collapsed .sb-collapse-btn .sb-collapse-icon{transform:rotate(180deg)}
+.sidebar.collapsed .sb-item{position:relative}
+.sidebar.collapsed .sb-item:hover::after{content:attr(title);position:absolute;left:52px;top:50%;transform:translateY(-50%);background:var(--text);color:#fff;padding:4px 8px;border-radius:6px;font-size:11px;white-space:nowrap;z-index:999;pointer-events:none}
+.sb-collapse-btn:hover{background:var(--bg)!important}
+.sb-item-label{white-space:nowrap;overflow:hidden}
 .sb-logo{padding:12px 14px;border-bottom:1px solid var(--border2)}.sb-logo-inner{display:flex;align-items:center;gap:10px}.sb-mark{width:32px;height:32px;background:var(--brand);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}.sb-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:var(--text)}.sb-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em}
 .sb-proj{margin:8px 10px 4px;padding:8px 10px;background:var(--brand-light);border-radius:var(--r);border:1px solid var(--brand-border);cursor:pointer;transition:background .15s}
 .sb-proj:hover{background:#dbeafe}
@@ -138,34 +153,42 @@ textarea.input{resize:vertical;min-height:70px}
 <div id="app">
   <div class="shell">
     <aside class="sidebar">
-      <div class="sb-logo">
-        <div class="sb-logo-inner">
-          <div class="sb-mark"><svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-          <div><div class="sb-title">MIDP</div><div class="sb-sub">BIM ISO 19650</div></div>
+      <div class="sb-logo" style="padding:10px 10px 8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <div class="sb-logo-inner" style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+            <div class="sb-mark" style="flex-shrink:0"><svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+            <div style="min-width:0;overflow:hidden"><div class="sb-title" style="white-space:nowrap;font-size:13px">Unify</div><div class="sb-sub" style="white-space:nowrap">Management</div></div>
+          </div>
+          <button class="sb-collapse-btn" onclick="toggleSidebar()" title="Colapsar menu" style="background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;color:var(--text3);flex-shrink:0;display:flex;align-items:center;transition:background .15s">
+            <svg class="sb-collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="transition:transform .25s"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
         </div>
       </div>
-      <div class="sb-proj" onclick="goToProjectSelector()" title="Cambiar proyecto">
-        <div class="sb-proj-inner">
-          <div><div class="sb-proj-code" id="sb-proj-code">--</div><div class="sb-proj-name" id="sb-proj-name">Cargando...</div></div>
-          <div class="sb-proj-change">&#8646;</div>
+      <div class="sb-proj" onclick="goToProjectSelector()" title="Cambiar proyecto" style="margin:6px 8px 2px">
+        <div class="sb-proj-inner" style="display:flex;align-items:center;gap:6px">
+          <div style="min-width:0;flex:1;overflow:hidden">
+            <div class="sb-proj-code" id="sb-proj-code" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">--</div>
+            <div class="sb-proj-name" id="sb-proj-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">Cargando...</div>
+          </div>
+          <div class="sb-proj-change" style="flex-shrink:0">&#8646;</div>
         </div>
       </div>
       <nav class="sb-nav">
         <div class="sb-section">Gestion</div>
-        <button class="sb-item active" onclick="nav('deliverables',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg>Entregables</button>
-        <button class="sb-item" id="sb-packages" onclick="nav('packages',this)" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>Paquetes</button>
-        <button class="sb-item" onclick="nav('progress',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Control de avance</button>
+        <button class="sb-item active" onclick="nav('deliverables',this)" title="Entregables"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg><span class="sb-item-label">Entregables</span></button>
+        <button class="sb-item" id="sb-packages" onclick="nav('packages',this)" title="Paquetes" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg><span class="sb-item-label">Paquetes</span></button>
+        <button class="sb-item" onclick="nav('progress',this)" title="Control de avance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="sb-item-label">Control de avance</span></button>
         <div class="sb-section">Administracion</div>
-        <button class="sb-item" onclick="nav('schemas',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="8" y="14" width="7" height="7" rx="1"/></svg>Config. de campos</button>
-        <button class="sb-item" id="sb-users" onclick="nav('users',this)" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Usuarios y permisos</button>
-        <button class="sb-item" id="sb-projects" onclick="nav('projects',this)" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Proyectos</button>
+        <button class="sb-item" onclick="nav('schemas',this)" title="Config. de campos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="8" y="14" width="7" height="7" rx="1"/></svg><span class="sb-item-label">Config. de campos</span></button>
+        <button class="sb-item" id="sb-users" onclick="nav('users',this)" title="Usuarios y permisos" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="sb-item-label">Usuarios y permisos</span></button>
+        <button class="sb-item" id="sb-projects" onclick="nav('projects',this)" title="Proyectos" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="sb-item-label">Proyectos</span></button>
       </nav>
       <div class="sb-user">
         <div class="sb-user-inner">
           <div class="sb-avatar" id="sb-avatar">A</div>
           <div><div class="sb-uname" id="sb-uname">--</div><span class="badge b-admin" id="sb-role-badge">Admin</span></div>
         </div>
-        <button class="sb-logout" onclick="doLogout()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Cerrar sesion</button>
+        <button class="sb-logout" onclick="doLogout()" title="Cerrar sesion"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span class="sb-logout-label">Cerrar sesion</span></button>
       </div>
     </aside>
     <div class="main">
@@ -180,6 +203,6 @@ textarea.input{resize:vertical;min-height:70px}
 
 <div class="toast" id="toast"></div>
 <div id="modal-container"></div>
-<script src="app.js?v=1774763589"></script>
+<script src="app.js?v=1774765857"></script>
 </body>
 </html>

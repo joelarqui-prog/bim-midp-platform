@@ -9,7 +9,10 @@ function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',hea
 
 var APP={user:null,project:null,schemas:[],users:[],packages:[],search:'',statusFilter:'',packageFilter:'',fieldFilters:{}};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
-function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true;return !!(APP.user.permissions||DEFAULT_PERMS)[a];}
+function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true;if(APP.user.role==='project_admin'){if(a==='can_create_project')return false;return true;}return !!(APP.user.permissions||DEFAULT_PERMS)[a];}
+
+// isAdminLevel: true para admin Y project_admin
+function isAdminLevel(){return APP.user&&(APP.user.role==='admin'||APP.user.role==='project_admin');}
 
 // Grupos de fases RIBA — fijos, siempre los mismos 3
 // PHASE_GROUPS is now dynamic — built from schemas
@@ -63,7 +66,7 @@ var STATUS_CFG={
   issued:{label:'Emitido',cls:'b-issued'},
   rejected:{label:'Rechazado',cls:'b-rejected'}
 };
-var ROLE_CFG={admin:{label:'Administrador',cls:'b-admin'},bim_manager:{label:'BIM Manager',cls:'b-bim'},specialist:{label:'Especialista',cls:'b-spec'}};
+var ROLE_CFG={admin:{label:'Administrador',cls:'b-admin'},project_admin:{label:'Admin. Proyecto',cls:'b-proj-admin'},bim_manager:{label:'BIM Manager',cls:'b-bim'},specialist:{label:'Especialista',cls:'b-spec'}};
 var FILTER_FIELDS=['area_funcional','fase_proyecto','volumen','nivel','disciplina','tipo_documento'];
 
 // ── HELPERS ──
@@ -240,8 +243,9 @@ function showApp(user){
     document.getElementById('sb-proj-name').textContent=APP.project.name;
   }
   var isAdmin=user.role==='admin';
-  var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdmin?'flex':'none';
-  var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdmin?'flex':'none';
+  var isAdminLvl=(user.role==='admin'||user.role==='project_admin');
+  var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdminLvl?'flex':'none';
+  var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdminLvl?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
   restoreSidebarState();
   nav('deliverables',document.querySelector('.sb-item'));
@@ -1315,6 +1319,16 @@ function renderSchemas(){
       inp.onchange=function(){toggleVisible(inp.dataset.schemaId,inp.checked);};
     });
 
+    // Event listeners via data attributes (avoid onclick issues with UUIDs)
+    document.querySelectorAll('.edit-user-btn').forEach(function(btn){
+      btn.addEventListener('click',function(){openUserModal(btn.dataset.uid);});
+    });
+    document.querySelectorAll('.proj-admin-toggle').forEach(function(chk){
+      chk.addEventListener('change',function(){toggleProjectAdmin(chk.dataset.uid,chk.checked);});
+    });
+    document.querySelectorAll('.perm-toggle').forEach(function(chk){
+      chk.addEventListener('change',function(){togglePerm(chk.dataset.uid,chk.dataset.pkey,chk.checked);});
+    });
   }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
 }
 
@@ -1446,7 +1460,8 @@ function deleteSchema(id){
 // ── USERS ──
 function renderUsers(){
   var isAdmin=APP.user&&APP.user.role==='admin';
-  document.getElementById('topbar-actions').innerHTML=isAdmin?'<button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Nuevo usuario</button>':'';
+  var isAdminLvl=APP.user&&(APP.user.role==='admin'||APP.user.role==='project_admin');
+  document.getElementById('topbar-actions').innerHTML=isAdminLvl?'<button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Nuevo usuario</button>':'';
   document.getElementById('content').innerHTML=loading();
   sbGet('users','?select=*&order=full_name.asc').then(function(users){
     APP.users=users;
@@ -1454,27 +1469,52 @@ function renderUsers(){
       users.map(function(u){
         var perms=u.permissions||DEFAULT_PERMS;
         var isAdminUser=u.role==='admin';
+        var isProjAdmin=u.role==='project_admin';
+        var isElevated=isAdminUser||isProjAdmin;
         return '<div class="perm-card">'+
           '<div class="perm-card-header">'+
-          '<div class="perm-avatar">'+initials(u.full_name)+'</div>'+
+          '<div class="perm-avatar"'+(isProjAdmin?' style="background:var(--violet)"':'')+'>'+
+          (isProjAdmin?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>':initials(u.full_name))+
+          '</div>'+
           '<div class="perm-user-info"><div class="perm-name">'+u.full_name+'</div>'+
-          '<div class="perm-email">'+u.email+' - '+(u.specialty||u.role)+'</div></div>'+
+          '<div class="perm-email">'+u.email+' · '+(u.specialty||(ROLE_CFG[u.role]?ROLE_CFG[u.role].label:u.role))+'</div></div>'+
           '<div style="display:flex;align-items:center;gap:8px;margin-left:auto">'+
           roleBadge(u.role)+
           (u.is_active?'<span class="badge b-approved" style="font-size:9px">Activo</span>':'<span class="badge b-rejected" style="font-size:9px">Inactivo</span>')+
-          (isAdmin?'<button class="btn btn-ghost btn-sm" onclick="openUserModal(\''+u.id+'\')">'+
+          (isAdminLvl&&!isAdminUser?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+u.id+'">'+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')+ 
+          (isAdminLvl&&isAdminUser&&u.id!==APP.user.id?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+u.id+'">'+
           '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')+
           '</div></div>'+
           '<div class="perm-body">'+
+          (isAdmin&&!isAdminUser?
+            '<div class="perm-item" style="background:var(--violet-light,#f5f3ff);border:1px solid #ddd6fe;border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
+            '<div style="flex:1">'+
+            '<div class="perm-item-label" style="color:var(--violet);font-weight:700;font-size:12px">⭐ Control de administrador del proyecto</div>'+
+            '<div style="font-size:10px;color:var(--text3);margin-top:2px">Acceso total excepto crear nuevos proyectos</div>'+
+            '</div>'+
+            '<label class="toggle"><input type="checkbox"'+(isProjAdmin?' checked':'')+' class="proj-admin-toggle" data-uid="'+u.id+'"><span class="toggle-slider" style="--toggle-on:#7c3aed"></span></label>'+
+            '</div>':'')+
           PERM_CONFIG.map(function(p){
-            var isActive=isAdminUser?true:!!perms[p.key];
-            return '<div class="perm-item"><div class="perm-item-label">'+p.label+'</div>'+
-              (isAdminUser?'<span style="font-size:10px;color:var(--green);font-weight:600">Siempre</span>':
-              (isAdmin?'<label class="toggle"><input type="checkbox"'+(isActive?' checked':'')+' onchange="togglePerm(\''+u.id+'\',\''+p.key+'\',this.checked)"><span class="toggle-slider"></span></label>':
-              '<span style="font-size:10px;font-weight:600;color:'+(isActive?'var(--green)':'var(--text3)')+'">'+( isActive?'Si':'No')+'</span>'))+'</div>';
+            var isActive=isElevated?true:!!perms[p.key];
+            return '<div class="perm-item">'+
+              '<div class="perm-item-label">'+p.label+'</div>'+
+              (isElevated?'<span style="font-size:10px;color:var(--green);font-weight:600">Siempre</span>':
+              (isAdminLvl?'<label class="toggle"><input type="checkbox"'+(isActive?' checked':'')+' class="perm-toggle" data-uid="'+u.id+'" data-pkey="'+p.key+'"><span class="toggle-slider"></span></label>':
+              '<span style="font-size:10px;font-weight:600;color:'+(isActive?'var(--green)':'var(--text3)')+'">'+( isActive?'Sí':'No')+'</span>'))+'</div>';
           }).join('')+
           '</div></div>';
       }).join('');
+    // Event listeners via data attributes (avoid onclick issues with UUIDs)
+    document.querySelectorAll('.edit-user-btn').forEach(function(btn){
+      btn.addEventListener('click',function(){openUserModal(btn.dataset.uid);});
+    });
+    document.querySelectorAll('.proj-admin-toggle').forEach(function(chk){
+      chk.addEventListener('change',function(){toggleProjectAdmin(chk.dataset.uid,chk.checked);});
+    });
+    document.querySelectorAll('.perm-toggle').forEach(function(chk){
+      chk.addEventListener('change',function(){togglePerm(chk.dataset.uid,chk.dataset.pkey,chk.checked);});
+    });
   }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
 }
 
@@ -1490,7 +1530,22 @@ function togglePerm(userId,permKey,value){
   }).catch(function(e){toast(e.message,'error');});
 }
 
+// ── Activa/desactiva rol de admin de proyecto ──
+function toggleProjectAdmin(userId,enable){
+  var user=APP.users.find(function(u){return u.id===userId;});
+  if(!user){toast('Usuario no encontrado.','error');return;}
+  var newRole=enable?'project_admin':(user.role==='project_admin'?'bim_manager':user.role);
+  sbPatch('users','id=eq.'+userId,{role:newRole}).then(function(){
+    var idx=APP.users.findIndex(function(u){return u.id===userId;});
+    if(idx>=0)APP.users[idx].role=newRole;
+    toast(enable?'Control de administrador activado.':'Control de administrador desactivado.');
+    renderUsers();
+  }).catch(function(e){toast(e.message,'error');renderUsers();});
+}
+
+
 function openUserModal(id){
+  var isAdmin=APP.user&&APP.user.role==='admin';
   var u=id?APP.users.find(function(x){return x.id===id;}):null;
   document.getElementById('modal-container').innerHTML=
     '<div class="modal-overlay" id="user-modal"><div class="modal">'+
@@ -1507,7 +1562,9 @@ function openUserModal(id){
     '<select class="input" id="u-role">'+
     '<option value="specialist"'+(u&&u.role==='specialist'?' selected':'')+'>Especialista</option>'+
     '<option value="bim_manager"'+(u&&u.role==='bim_manager'?' selected':'')+'>BIM Manager</option>'+
-    '<option value="admin"'+(u&&u.role==='admin'?' selected':'')+'>Administrador</option></select></div>'+
+    (isAdmin?'<option value="project_admin"'+(u&&u.role==='project_admin'?' selected':'')+'>Admin. Proyecto</option>':'')+ 
+    (isAdmin?'<option value="admin"'+(u&&u.role==='admin'?' selected':'')+'>Administrador</option>':'')+
+    '</select></div>'+
     '<div class="form-group"><label class="label">Especialidad</label>'+
     '<input type="text" class="input" id="u-spec" value="'+(u?u.specialty||'':'')+'" placeholder="Arquitectura, MEP..."></div>'+
     '<div class="form-group"><label class="label">Empresa</label>'+

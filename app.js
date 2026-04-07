@@ -7,7 +7,7 @@ function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:
 function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 
-var APP={user:null,project:null,schemas:[],users:[],packages:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{}};
+var APP={user:null,project:null,schemas:[],users:[],packages:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
 function can(a){
   if(!APP.user)return false;
@@ -405,10 +405,14 @@ function nav(view,el){
 // ── DELIVERABLES ──
 function renderDeliverables(){
   var canCreate=can('can_create_deliverables');
+  var canEdit=can('can_edit_deliverables');
   document.getElementById('topbar-actions').innerHTML=
     '<button class="btn btn-sm" onclick="exportCSV()">&#8595; CSV</button>'+
     '<button class="btn btn-sm" onclick="exportMIDP()">&#8595; MIDP</button>'+
+    (canEdit?'<button class="btn btn-sm" id="btn-bulk-edit" onclick="openBulkEditModal()" style="display:none">&#9998; Editar seleccion</button>':'')+
     (canCreate?'<button class="btn btn-primary btn-sm" onclick="openDeliverableModal()">+ Nuevo entregable</button>':'');
+  // Clear selection when re-rendering
+  APP.selectedIds=[];
 
   // Filtros por campo de codificacion
   var schemaFilters=codeSchemas()
@@ -439,7 +443,15 @@ function renderDeliverables(){
     '</select>'+
     '<button class="btn btn-sm" onclick="clearFilters()">x Limpiar</button>'+
     '<button class="btn btn-sm" onclick="loadDeliverables()">&#8635;</button>'+
-    '</div></div>'+  // close del-fixed-zone
+    '</div>'+
+    // Barra de acciones masivas (oculta hasta seleccionar)
+    '<div id="bulk-bar" style="display:none;align-items:center;gap:10px;padding:8px 12px;background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;margin-top:8px">'+
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'+
+    '<span class="bulk-count" style="font-size:12px;font-weight:600;color:var(--brand);flex:1">0 seleccionados</span>'+
+    (canEdit?'<button class="btn btn-primary btn-sm" onclick="openBulkEditModal()">&#9998; Editar seleccion</button>':'')+
+    '<button class="btn btn-sm" style="color:var(--slate)" onclick="clearSelection()">&#10006; Deseleccionar</button>'+
+    '</div>'+
+    '</div>'+  // close del-fixed-zone
     '<div class="del-scroll-zone" id="del-table">'+loading()+'</div>';
   loadDeliverables();
 }
@@ -500,8 +512,8 @@ function loadDeliverables(){
     var phaseColKeys=['lod','loi','delivery_date'];
 
     // Sticky col widths
-    var W={code:150,name:140,status:95,general:80,lod:42,loi:38,fecha:74,acc:48};
-    var stickyLeft2=W.code; // where Name starts
+    var W={chk:36,code:150,name:140,status:95,general:80,lod:42,loi:38,fecha:74,acc:48};
+    var stickyLeft2=(canEdit?W.chk:0)+W.code; // where Name starts
 
     // Calcular min-width de la tabla basado en columnas
     var minW = W.code + W.name + W.status +
@@ -517,8 +529,9 @@ function loadDeliverables(){
 
     var html=
       '<table class="midp-tbl" style="min-width:'+minW+'px;width:max-content"><thead><tr>'+
+      (canEdit?'<th class="scol" style="left:0;width:'+W.chk+'px;min-width:'+W.chk+'px;max-width:'+W.chk+'px;z-index:4;text-align:center;padding:0"><input type="checkbox" id="sel-all" style="cursor:pointer;margin:0" title="Seleccionar todos"></th>':'')+
       // Sticky col 1: Codigo
-      '<th class="scol" style="left:0;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
+      '<th class="scol" style="left:'+(canEdit?W.chk:0)+'px;min-width:'+W.code+'px;max-width:'+W.code+'px;z-index:4">Codigo</th>'+
       // Sticky col 2: Nombre
       '<th class="scol" style="left:'+stickyLeft2+'px;min-width:'+W.name+'px;max-width:'+W.name+'px;z-index:4">Nombre</th>'+
       '<th style="min-width:'+W.status+'px">Estado</th>'+
@@ -534,7 +547,8 @@ function loadDeliverables(){
       (canEdit||canDel?'<th style="min-width:'+W.acc+'px">Acc.</th>':'')+
       '</tr><tr>'+
       '<th class="scol" style="left:0;background:var(--bg);z-index:4"></th>'+
-      '<th class="scol" style="left:'+stickyLeft2+'px;background:var(--bg);z-index:4"></th>'+
+      (canEdit?'<th class="scol" style="left:0;background:var(--bg);z-index:4"></th>':'')+
+      '<th class="scol" style="left:'+(canEdit?W.chk:0)+'px;background:var(--bg);z-index:4"></th>'+
       '<th style="background:var(--bg)"></th>'+
       visGeneral.map(function(){return '<th style="background:var(--bg)"></th>';}).join('')+
       getPhaseGroups().map(function(ph){
@@ -576,8 +590,9 @@ function loadDeliverables(){
           }).join('');
         }).join('');
 
-        return '<tr>'+
-          '<td class="scol" style="left:0;background:var(--surface)">'+
+        return '<tr class="del-row"'+(APP.selectedIds.indexOf(d.id)>=0?' style="background:var(--brand-light)"':'')+' data-id="'+d.id+'">'+ 
+          (canEdit?'<td class="scol del-chk" style="left:0;background:var(--surface);text-align:center;padding:0;width:'+W.chk+'px"><input type="checkbox"'+(APP.selectedIds.indexOf(d.id)>=0?' checked':'')+' class="row-chk" data-id="'+d.id+'" style="cursor:pointer;margin:0"></td>':'')+ 
+          '<td class="scol" style="left:'+(canEdit?W.chk:0)+'px;background:var(--surface)">'+ 
           '<span class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>'+
           (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.work_package+'</div>':'')+
           '</td>'+
@@ -605,10 +620,224 @@ function loadDeliverables(){
     wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);display:inline-block;min-width:100%';
     wrapper.innerHTML=html;
     dt.appendChild(wrapper);
+    // ── Checkbox event listeners ──
+    if(canEdit){
+      var selAll=document.getElementById('sel-all');
+      if(selAll){
+        selAll.checked=APP.selectedIds.length===items.length&&items.length>0;
+        selAll.addEventListener('change',function(){
+          APP.selectedIds=this.checked?items.map(function(d){return d.id;}) :[];
+          updateBulkBar();
+          // Update all row checkboxes
+          document.querySelectorAll('.row-chk').forEach(function(chk){
+            chk.checked=this.checked;
+            chk.closest('tr').style.background=this.checked?'var(--brand-light)':'';
+          },this);
+        });
+      }
+      document.querySelectorAll('.row-chk').forEach(function(chk){
+        chk.addEventListener('change',function(){
+          var id=this.dataset.id;
+          if(this.checked){if(APP.selectedIds.indexOf(id)<0)APP.selectedIds.push(id);}
+          else{APP.selectedIds=APP.selectedIds.filter(function(x){return x!==id;});}
+          this.closest('tr').style.background=this.checked?'var(--brand-light)':'';
+          // Update sel-all state
+          var sa=document.getElementById('sel-all');
+          if(sa)sa.checked=APP.selectedIds.length===items.length&&items.length>0;
+          updateBulkBar();
+        });
+      });
+      updateBulkBar();
+    }
   }).catch(function(e){
     document.getElementById('del-table').innerHTML='<div class="card"><div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div></div>';
   });
 }
+
+// ── EDICIÓN MASIVA ──
+
+// Muestra/oculta la barra de acciones masivas
+function updateBulkBar(){
+  var bar=document.getElementById('bulk-bar');
+  var n=APP.selectedIds.length;
+  if(bar){
+    bar.style.display=n>0?'flex':'none';
+    var lbl=bar.querySelector('.bulk-count');
+    if(lbl)lbl.textContent=n+' entregable'+(n>1?'s':'')+' seleccionado'+(n>1?'s':'');
+  }
+}
+
+// Deseleccionar todo
+function clearSelection(){
+  APP.selectedIds=[];
+  document.querySelectorAll('.row-chk').forEach(function(c){
+    c.checked=false;
+    var tr=c.closest('tr');
+    if(tr)tr.style.background='';
+  });
+  var sa=document.getElementById('sel-all');
+  if(sa)sa.checked=false;
+  updateBulkBar();
+}
+
+// Modal de edición masiva
+function openBulkEditModal(){
+  if(!APP.selectedIds.length){toast('Selecciona al menos un entregable.','error');return;}
+  var n=APP.selectedIds.length;
+  var phGroups=getPhaseGroups();
+
+  // Campos editables de forma masiva:
+  // Estado, campos generales editables, campos de hito (responsable, lod, loi, fecha, prod_time)
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='bulk-modal';
+
+  var fieldsHtml=
+    // ── Estado ──
+    '<div class="form-section-title" style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px">Estado</div>'+
+    '<div class="form-group">'+
+    '<label class="label">Estado del entregable</label>'+
+    '<select class="input" id="bulk-status"><option value="">— Sin cambio —</option>'+
+    Object.entries(STATUS_CFG).map(function(e){return '<option value="'+e[0]+'">'+e[1].label+'</option>';}).join('')+
+    '</select></div>'+
+    // ── Campos generales ──
+    (generalSchemas().filter(function(s){return s.key!=='estado'&&s.key!=='status';}).length?
+      '<div class="form-section-title" style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 10px">Información general</div>'+
+      '<div class="form-grid">'+
+      generalSchemas().filter(function(s){return s.key!=='estado'&&s.key!=='status';}).map(function(s){
+        var inputHtml='';
+        if(s.field_type==='dropdown'&&s.options&&s.options.length){
+          inputHtml='<select class="input" id="bulk-gen-'+s.key+'"><option value="">— Sin cambio —</option>'+
+            s.options.map(function(o){return '<option value="'+o+'">'+o+'</option>';}).join('')+'</select>';
+        }else if(s.field_type==='date'){
+          inputHtml='<input type="date" class="input" id="bulk-gen-'+s.key+'">';
+        }else{
+          inputHtml='<input type="text" class="input" id="bulk-gen-'+s.key+'" placeholder="— Sin cambio —">';
+        }
+        return '<div class="form-group"><label class="label">'+s.name+'</label>'+inputHtml+'</div>';
+      }).join('')+
+      '</div>':'') +
+    // ── Campos de hito ──
+    phGroups.map(function(ph){
+      var schemas=phaseSchemas(ph.key).filter(function(s){
+        var k=s.key.replace(ph.key+'_','');
+        return ['responsible','prod_time','lod','loi','delivery_date'].indexOf(k)>=0||
+               s.key.replace(ph.key+'_','')===k&&
+               ['responsible','prod_time','lod','loi'].some(function(x){return s.key.indexOf(x)>=0;});
+      });
+      if(!schemas.length)return '';
+      return '<div class="form-section-title" style="font-size:11px;font-weight:700;color:'+ph.color+';text-transform:uppercase;letter-spacing:.05em;margin:14px 0 10px;display:flex;align-items:center;gap:6px">'+
+        '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+ph.color+'"></span>'+ph.label+(ph.sub?' · '+ph.sub:'')+
+        '</div><div class="form-grid">'+
+        schemas.map(function(s){
+          var k=s.key.replace(ph.key+'_','');
+          var label=s.name.replace(ph.label+' - ','');
+          var inputHtml='';
+          if(s.field_type==='dropdown'&&s.options&&s.options.length){
+            inputHtml='<select class="input" id="bulk-ph-'+s.key+'"><option value="">— Sin cambio —</option>'+
+              s.options.map(function(o){return '<option value="'+o+'">'+o+'</option>';}).join('')+'</select>';
+          }else if(s.field_type==='date'){
+            inputHtml='<input type="date" class="input" id="bulk-ph-'+s.key+'">';
+          }else{
+            inputHtml='<input type="text" class="input" id="bulk-ph-'+s.key+'" placeholder="— Sin cambio —">';
+          }
+          return '<div class="form-group"><label class="label">'+label+'</label>'+inputHtml+'</div>';
+        }).join('')+
+        '</div>';
+    }).join('')+
+    // ── Paquete ──
+    (APP.packages.length?
+      '<div class="form-section-title" style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 10px">Asignación</div>'+
+      '<div class="form-group">'+
+      '<label class="label">Paquete de trabajo</label>'+
+      '<select class="input" id="bulk-pkg"><option value="">— Sin cambio —</option>'+
+      APP.packages.map(function(p){return '<option value="'+p.code+'">'+p.code+' — '+p.name+'</option>';}).join('')+
+      '</select></div>':'');
+
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:640px;max-height:85vh;display:flex;flex-direction:column">'+
+    '<div class="modal-header">'+
+    '<div>'+
+    '<div class="modal-title">Edición masiva</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+n+' entregable'+(n>1?'s':'')+' seleccionado'+(n>1?'s':', los')+'  — Solo se actualizarán los campos que completes</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="bm-close">X</button></div>'+
+    '<div class="modal-body" style="overflow-y:auto;flex:1">'+fieldsHtml+'</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="bm-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="bm-save">Guardar cambios en '+n+' entregable'+(n>1?'s':'')+'</button>'+
+    '</div></div>';
+
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('bm-close').onclick=function(){overlay.remove();};
+  document.getElementById('bm-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('bm-save').onclick=function(){saveBulkEdit(overlay);};
+}
+
+// Ejecutar guardado masivo
+function saveBulkEdit(overlay){
+  var btn=document.getElementById('bm-save');
+  btn.disabled=true;btn.textContent='Guardando...';
+
+  // Recoger solo campos con valor
+  var payload={updated_at:new Date().toISOString()};
+  var hasChange=false;
+
+  // Estado
+  var st=document.getElementById('bulk-status');
+  if(st&&st.value){payload.status=st.value;hasChange=true;}
+
+  // Paquete
+  var pkg=document.getElementById('bulk-pkg');
+  if(pkg&&pkg.value){payload.work_package=pkg.value;hasChange=true;}
+
+  // Campos generales
+  generalSchemas().filter(function(s){return s.key!=='estado'&&s.key!=='status';}).forEach(function(s){
+    var el=document.getElementById('bulk-gen-'+s.key);
+    if(el&&el.value.trim()){
+      // Los campos generales que mapean a columnas directas
+      var MAP={nombre:'name',titulo:'name',title:'name',descripcion:'description',
+               formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',predecesores:'predecessors'};
+      var col=MAP[s.key];
+      if(col){payload[col]=el.value.trim();hasChange=true;}
+    }
+  });
+
+  // Campos de hito (columnas directas en deliverables)
+  getPhaseGroups().forEach(function(ph){
+    phaseSchemas(ph.key).forEach(function(s){
+      var el=document.getElementById('bulk-ph-'+s.key);
+      if(el&&el.value.trim()){
+        var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
+        payload[dbCol]=el.value.trim()||null;
+        hasChange=true;
+      }
+    });
+  });
+
+  if(!hasChange){
+    toast('No hay cambios que guardar.','error');
+    btn.disabled=false;btn.textContent='Guardar cambios en '+APP.selectedIds.length+' entregable'+(APP.selectedIds.length>1?'s':'');
+    return;
+  }
+
+  // Ejecutar PATCH para cada entregable seleccionado
+  var ids=APP.selectedIds.slice();
+  var promises=ids.map(function(id){
+    return sbPatch('deliverables','id=eq.'+id,payload);
+  });
+
+  Promise.all(promises).then(function(){
+    toast(ids.length+' entregable'+(ids.length>1?'s':'')+' actualizado'+(ids.length>1?'s':'')+'.');
+    overlay.remove();
+    clearSelection();
+    loadDeliverables();
+  }).catch(function(e){
+    toast(e.message,'error');
+    btn.disabled=false;
+    btn.textContent='Guardar cambios';
+  });
+}
+
 
 function changeStatus(id,s){
   if(!can('can_change_status')){toast('Sin permiso.','error');return;}

@@ -7,12 +7,26 @@ function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:
 function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 
-var APP={user:null,project:null,schemas:[],users:[],packages:[],search:'',statusFilter:'',packageFilter:'',fieldFilters:{}};
+var APP={user:null,project:null,schemas:[],users:[],packages:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{}};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
-function can(a){if(!APP.user)return false;if(APP.user.role==='admin')return true;if(APP.user.role==='project_admin'){if(a==='can_create_project')return false;return true;}return !!(APP.user.permissions||DEFAULT_PERMS)[a];}
+function can(a){
+  if(!APP.user)return false;
+  // Admin global: siempre puede todo
+  if(APP.user.role==='admin')return true;
+  // Leer permisos del proyecto activo desde project_members
+  var pm=APP.projectMember;
+  // project_admin del proyecto: todo excepto crear nuevos proyectos
+  if(pm&&pm.role==='project_admin'){
+    if(a==='can_create_project')return false;
+    return true;
+  }
+  // Otros usuarios: permisos específicos del proyecto
+  var perms=(pm&&pm.permissions)||DEFAULT_PERMS;
+  return !!(perms[a]);
+}
 
 // isAdminLevel: true para admin Y project_admin
-function isAdminLevel(){return APP.user&&(APP.user.role==='admin'||APP.user.role==='project_admin');}
+function isAdminLevel(){if(!APP.user)return false;if(APP.user.role==='admin')return true;var pm=APP.projectMember;return pm&&(pm.role==='project_admin');}
 
 // Grupos de fases RIBA — fijos, siempre los mismos 3
 // PHASE_GROUPS is now dynamic — built from schemas
@@ -204,13 +218,18 @@ function selectProject(projectId){
   sbGet('projects','?id=eq.'+projectId+'&limit=1')
     .then(function(ps){
       APP.project=ps[0]||null;
-      var p2=APP.project?sbGet('field_schemas','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=field_order.asc,code_order.asc'):Promise.resolve([]);
-      var p3=APP.project?sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'):Promise.resolve([]);
-      return Promise.all([p2,sbGet('users','?select=*&order=full_name.asc'),p3]);
+      var pid=APP.project.id;
+      var p2=sbGet('field_schemas','?project_id=eq.'+pid+'&is_active=eq.true&order=field_order.asc,code_order.asc');
+      var p3=sbGet('packages','?project_id=eq.'+pid+'&is_active=eq.true&order=code.asc');
+      // Cargar todos los miembros del proyecto con sus permisos por proyecto
+      var p4=sbGet('project_members','?project_id=eq.'+pid+'&select=id,user_id,role,permissions,users(id,full_name,email,role,specialty,company,is_active)');
+      return Promise.all([p2,sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc'),p3,p4]);
     })
     .then(function(r){
       APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];
-      // Save project selection
+      APP.projectMembers=r[3]||[];
+      // Guardar la membresía del usuario actual en este proyecto
+      APP.projectMember=APP.projectMembers.find(function(m){return m.user_id===APP.user.id;})||null;
       try{
         var s=JSON.parse(localStorage.getItem('midp_session')||'{}');
         s.projectId=APP.project.id;
@@ -243,7 +262,8 @@ function showApp(user){
     document.getElementById('sb-proj-name').textContent=APP.project.name;
   }
   var isAdmin=user.role==='admin';
-  var isAdminLvl=(user.role==='admin'||user.role==='project_admin');
+  var pm=APP.projectMember;
+  var isAdminLvl=isAdmin||(pm&&pm.role==='project_admin');
   var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdminLvl?'flex':'none';
   var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdminLvl?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
@@ -1461,88 +1481,100 @@ function deleteSchema(id){
 function renderUsers(){
   var isAdmin=APP.user&&APP.user.role==='admin';
   var isAdminLvl=APP.user&&(APP.user.role==='admin'||APP.user.role==='project_admin');
-  document.getElementById('topbar-actions').innerHTML=isAdminLvl?'<button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Nuevo usuario</button>':'';
+  document.getElementById('topbar-actions').innerHTML=isAdmin?'<button class="btn btn-primary btn-sm" onclick="openUserModal()">+ Nuevo usuario</button>':'';
+  var pid=APP.project&&APP.project.id;
+  if(!pid){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Sin proyecto activo</div></div>';return;}
   document.getElementById('content').innerHTML=loading();
-  sbGet('users','?select=*&order=full_name.asc').then(function(users){
-    APP.users=users;
-    document.getElementById('content').innerHTML=
-      users.map(function(u){
-        var perms=u.permissions||DEFAULT_PERMS;
-        var isAdminUser=u.role==='admin';
-        var isProjAdmin=u.role==='project_admin';
-        var isElevated=isAdminUser||isProjAdmin;
-        return '<div class="perm-card">'+
-          '<div class="perm-card-header">'+
-          '<div class="perm-avatar"'+(isProjAdmin?' style="background:var(--violet)"':'')+'>'+
-          (isProjAdmin?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>':initials(u.full_name))+
-          '</div>'+
-          '<div class="perm-user-info"><div class="perm-name">'+u.full_name+'</div>'+
-          '<div class="perm-email">'+u.email+' · '+(u.specialty||(ROLE_CFG[u.role]?ROLE_CFG[u.role].label:u.role))+'</div></div>'+
-          '<div style="display:flex;align-items:center;gap:8px;margin-left:auto">'+
-          roleBadge(u.role)+
-          (u.is_active?'<span class="badge b-approved" style="font-size:9px">Activo</span>':'<span class="badge b-rejected" style="font-size:9px">Inactivo</span>')+
-          (isAdminLvl&&!isAdminUser?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+u.id+'">'+
-          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')+ 
-          (isAdminLvl&&isAdminUser&&u.id!==APP.user.id?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+u.id+'">'+
-          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')+
-          '</div></div>'+
-          '<div class="perm-body">'+
-          (isAdmin&&!isAdminUser?
-            '<div class="perm-item" style="background:var(--violet-light,#f5f3ff);border:1px solid #ddd6fe;border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
-            '<div style="flex:1">'+
-            '<div class="perm-item-label" style="color:var(--violet);font-weight:700;font-size:12px">⭐ Control de administrador del proyecto</div>'+
-            '<div style="font-size:10px;color:var(--text3);margin-top:2px">Acceso total excepto crear nuevos proyectos</div>'+
-            '</div>'+
-            '<label class="toggle"><input type="checkbox"'+(isProjAdmin?' checked':'')+' class="proj-admin-toggle" data-uid="'+u.id+'"><span class="toggle-slider" style="--toggle-on:#7c3aed"></span></label>'+
-            '</div>':'')+
-          PERM_CONFIG.map(function(p){
-            var isActive=isElevated?true:!!perms[p.key];
-            return '<div class="perm-item">'+
-              '<div class="perm-item-label">'+p.label+'</div>'+
-              (isElevated?'<span style="font-size:10px;color:var(--green);font-weight:600">Siempre</span>':
-              (isAdminLvl?'<label class="toggle"><input type="checkbox"'+(isActive?' checked':'')+' class="perm-toggle" data-uid="'+u.id+'" data-pkey="'+p.key+'"><span class="toggle-slider"></span></label>':
-              '<span style="font-size:10px;font-weight:600;color:'+(isActive?'var(--green)':'var(--text3)')+'">'+( isActive?'Sí':'No')+'</span>'))+'</div>';
-          }).join('')+
-          '</div></div>';
-      }).join('');
-    // Event listeners via data attributes (avoid onclick issues with UUIDs)
+  sbGet('project_members','?project_id=eq.'+pid+'&select=id,user_id,role,permissions,users(id,full_name,email,role,specialty,company,is_active)').then(function(members){
+    APP.projectMembers=members;
+    var html='<div style="margin-bottom:12px;padding:10px 14px;background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:var(--brand);display:flex;align-items:center;gap:8px">'+
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+      'Los permisos se configuran <strong style="margin:0 3px">por proyecto</strong>. Proyecto activo: <strong style="margin:0 3px">'+APP.project.name+'</strong></div>';
+    if(!members.length){
+      html+='<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Sin miembros</div><div class="empty-desc">Agrega miembros desde Proyectos → Miembros</div></div>';
+      document.getElementById('content').innerHTML=html;return;
+    }
+    html+=members.map(function(m){
+      var u=m.users||{};
+      var pmRole=m.role||'member';
+      var pmPerms=m.permissions||DEFAULT_PERMS;
+      var isTrueAdmin=(u.role||'')==='admin';
+      var isProjAdmin=pmRole==='project_admin';
+      var isElevated=isTrueAdmin||isProjAdmin;
+      return '<div class="perm-card">'+
+        '<div class="perm-card-header">'+
+        '<div class="perm-avatar"'+(isProjAdmin?' style="background:var(--violet)"':isTrueAdmin?' style="background:var(--brand)"':'')+'>'+
+        (isProjAdmin?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>':initials(u.full_name||'?'))+
+        '</div>'+
+        '<div class="perm-user-info">'+
+        '<div class="perm-name">'+(u.full_name||'Usuario')+(m.user_id===APP.user.id?' <span style="font-size:9px;background:#eff6ff;color:var(--brand);padding:1px 5px;border-radius:10px;font-weight:600">Tú</span>':'')+'</div>'+
+        '<div class="perm-email">'+(u.email||'')+(u.specialty?' · '+u.specialty:'')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-left:auto">'+
+        '<span class="badge '+(isProjAdmin?'b-proj-admin':isTrueAdmin?'b-admin':pmRole==='bim_manager'?'b-bim':'b-spec')+'">'+
+        (isProjAdmin?'Admin. Proyecto':isTrueAdmin?'Administrador':pmRole==='bim_manager'?'BIM Manager':'Especialista')+'</span>'+
+        (u.is_active?'<span class="badge b-approved" style="font-size:9px">Activo</span>':'<span class="badge b-rejected" style="font-size:9px">Inactivo</span>')+
+        (isAdmin&&!isTrueAdmin?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+m.user_id+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')+
+        '</div></div>'+
+        '<div class="perm-body">'+
+        (isAdmin&&!isTrueAdmin?
+          '<div class="perm-item" style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;padding:8px 10px;margin-bottom:6px">'+
+          '<div style="flex:1"><div class="perm-item-label" style="color:var(--violet);font-weight:700;font-size:12px">⭐ Control de administrador del proyecto</div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:2px">Acceso total en este proyecto — excepto crear nuevos proyectos</div></div>'+
+          '<label class="toggle"><input type="checkbox"'+(isProjAdmin?' checked':'')+' class="proj-admin-toggle" data-mid="'+m.id+'" data-uid="'+m.user_id+'"><span class="toggle-slider" style="--toggle-on:#7c3aed"></span></label>'+
+          '</div>':'') +
+        PERM_CONFIG.map(function(p){
+          var isActive=isElevated?true:!!(pmPerms[p.key]);
+          return '<div class="perm-item">'+
+            '<div class="perm-item-label">'+p.label+'</div>'+
+            (isElevated?'<span style="font-size:10px;color:var(--green);font-weight:600">Siempre</span>':
+            (isAdmin?'<label class="toggle"><input type="checkbox"'+(isActive?' checked':'')+' class="perm-toggle" data-mid="'+m.id+'" data-pkey="'+p.key+'"><span class="toggle-slider"></span></label>':
+            '<span style="font-size:10px;font-weight:600;color:'+(isActive?'var(--green)':'var(--text3)')+'">'+( isActive?'Sí':'No')+'</span>'))+'</div>';
+        }).join('')+
+        '</div></div>';
+    }).join('');
+    document.getElementById('content').innerHTML=html;
     document.querySelectorAll('.edit-user-btn').forEach(function(btn){
       btn.addEventListener('click',function(){openUserModal(btn.dataset.uid);});
     });
     document.querySelectorAll('.proj-admin-toggle').forEach(function(chk){
-      chk.addEventListener('change',function(){toggleProjectAdmin(chk.dataset.uid,chk.checked);});
+      chk.addEventListener('change',function(){toggleProjectAdmin(chk.dataset.mid,chk.dataset.uid,chk.checked);});
     });
     document.querySelectorAll('.perm-toggle').forEach(function(chk){
-      chk.addEventListener('change',function(){togglePerm(chk.dataset.uid,chk.dataset.pkey,chk.checked);});
+      chk.addEventListener('change',function(){togglePerm(chk.dataset.mid,chk.dataset.pkey,chk.checked);});
     });
-  }).catch(function(e){document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';});
+  }).catch(function(e){
+    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+  });
 }
 
-function togglePerm(userId,permKey,value){
-  var user=APP.users.find(function(u){return u.id===userId;});
-  var cp=Object.assign({},DEFAULT_PERMS,user?user.permissions:{});
+function togglePerm(memberId,permKey,value){
+  // Los permisos se guardan en project_members, no en users
+  var m=APP.projectMembers.find(function(x){return x.id===memberId;});
+  var cp=Object.assign({},DEFAULT_PERMS,m?m.permissions:{});
   cp[permKey]=value;
-  sbPatch('users','id=eq.'+userId,{permissions:cp}).then(function(){
-    var idx=APP.users.findIndex(function(u){return u.id===userId;});
-    if(idx>=0)APP.users[idx].permissions=cp;
-    if(userId===APP.user.id)APP.user.permissions=cp;
-    toast('Permiso '+(value?'activado':'desactivado')+'.');
-  }).catch(function(e){toast(e.message,'error');});
-}
-
-// ── Activa/desactiva rol de admin de proyecto ──
-function toggleProjectAdmin(userId,enable){
-  var user=APP.users.find(function(u){return u.id===userId;});
-  if(!user){toast('Usuario no encontrado.','error');return;}
-  var newRole=enable?'project_admin':(user.role==='project_admin'?'bim_manager':user.role);
-  sbPatch('users','id=eq.'+userId,{role:newRole}).then(function(){
-    var idx=APP.users.findIndex(function(u){return u.id===userId;});
-    if(idx>=0)APP.users[idx].role=newRole;
-    toast(enable?'Control de administrador activado.':'Control de administrador desactivado.');
-    renderUsers();
+  sbPatch('project_members','id=eq.'+memberId,{permissions:cp}).then(function(){
+    var idx=APP.projectMembers.findIndex(function(x){return x.id===memberId;});
+    if(idx>=0)APP.projectMembers[idx].permissions=cp;
+    // Si es el usuario activo, actualizar APP.projectMember también
+    if(m&&m.user_id===APP.user.id)APP.projectMember=APP.projectMembers[idx];
+    toast('Permiso actualizado.');
   }).catch(function(e){toast(e.message,'error');renderUsers();});
 }
 
+// ── Activa/desactiva rol de admin de proyecto ──
+function toggleProjectAdmin(memberId,userId,enable){
+  // Actualiza el rol en project_members (scope del proyecto)
+  // No modifica el rol global del usuario en tabla users
+  var newPmRole=enable?'project_admin':'member';
+  sbPatch('project_members','id=eq.'+memberId,{role:newPmRole}).then(function(){
+    var idx=APP.projectMembers.findIndex(function(x){return x.id===memberId;});
+    if(idx>=0)APP.projectMembers[idx].role=newPmRole;
+    if(userId===APP.user.id)APP.projectMember=APP.projectMembers[idx];
+    toast(enable?'Control de administrador activado para este proyecto.':'Control de administrador desactivado.');
+    renderUsers();
+  }).catch(function(e){toast(e.message,'error');renderUsers();});
+}
 
 function openUserModal(id){
   var isAdmin=APP.user&&APP.user.role==='admin';

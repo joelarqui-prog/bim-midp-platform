@@ -32,6 +32,31 @@ function isAdminLevel(){if(!APP.user)return false;if(APP.user.role==='admin')ret
 function isKnownPhase(phKey){
   return phKey==='riba2'||phKey==='riba3'||phKey==='riba4';
 }
+// Gets the field key and value that identify "models" for this project
+// Default: field_values->>tipo_documento = 'MOD'
+// Configurable: stored in localStorage as midp_model_cfg_{projectId}
+function getModelConfig(){
+  var projectId=APP.project&&APP.project.id;
+  if(!projectId)return {fieldKey:'tipo_documento',fieldValue:'MOD'};
+  try{
+    var raw=localStorage.getItem('midp_model_cfg_'+projectId);
+    if(raw)return JSON.parse(raw);
+  }catch(e){}
+  return {fieldKey:'tipo_documento',fieldValue:'MOD'};
+}
+
+function saveModelConfig(fieldKey,fieldValue){
+  var projectId=APP.project&&APP.project.id;
+  if(!projectId)return;
+  localStorage.setItem('midp_model_cfg_'+projectId,JSON.stringify({fieldKey:fieldKey,fieldValue:fieldValue}));
+}
+
+// Build Supabase query param for model filter
+function getModelFilterParam(){
+  var cfg=getModelConfig();
+  return '&field_values->>'+encodeURIComponent(cfg.fieldKey)+'=eq.'+encodeURIComponent(cfg.fieldValue);
+}
+
 
 
 // Grupos de fases RIBA — fijos, siempre los mismos 3
@@ -703,7 +728,7 @@ function openBulkEditModal(){
   var getMods=sbGet('deliverables',
     '?project_id=eq.'+APP.project.id+
     '&is_active=eq.true'+
-    '&field_values->>tipo_documento=eq.MOD'+
+    getModelFilterParam()+
     '&select=id,code,name&order=code.asc'
   ).catch(function(){return[];});
 
@@ -944,7 +969,7 @@ function openDeliverableModal(id){
   var getMods=sbGet('deliverables',
     '?project_id=eq.'+APP.project.id+
     '&is_active=eq.true'+
-    '&field_values->>tipo_documento=eq.MOD'+
+    getModelFilterParam()+
     '&select=id,code,name&order=code.asc'
   ).catch(function(){return [];});
   Promise.all([getD,getMods]).then(function(res){
@@ -1075,6 +1100,31 @@ function openDeliverableModal(id){
       '<div class="form-grid" style="margin-bottom:16px">'+codeInputs+'</div>'+
       '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Informacion del contenedor</div>'+
       '<div class="form-grid" style="margin-bottom:8px">'+generalInputs+'</div>'+
+
+      // ── Campos fijos siempre presentes (independientes de field_schemas) ──
+      '<div class="form-grid" style="margin-bottom:8px">'+
+
+      // Paquete — siempre visible si hay paquetes (o campo vacío si no hay)
+      (generalSchemas().every(function(s){return s.key!=='paquete'&&s.key!=='work_package';})?
+        '<div class="form-group"><label class="label">Paquete de trabajo</label>'+
+        '<select class="input" id="del-pkg-fixed">'+
+        '<option value="">Sin paquete</option>'+
+        APP.packages.map(function(p){return '<option value="'+p.code+'"'+(d&&d.work_package===p.code?' selected':'')+'>'+p.code+' — '+p.name+'</option>';}).join('')+
+        '</select></div>':'')+
+
+      // Modelo asociado — siempre visible, lista de modelos del proyecto
+      '<div class="form-group"><label class="label">🏗️ Modelo BIM asociado</label>'+
+      '<select class="input" id="del-model-fixed">'+
+      '<option value="">Sin modelo asociado</option>'+
+      (window._modDels||[]).map(function(m){
+        // check if any phase already references this model
+        var isSelected=d&&(d.riba2_doc_assoc===m.code||d.riba3_doc_assoc===m.code||d.riba4_doc_assoc===m.code);
+        return '<option value="'+m.code+'"'+(isSelected?' selected':'')+'>'+m.code+' — '+m.name+'</option>';
+      }).join('')+
+      '</select><div style="font-size:9px;color:var(--text3);margin-top:3px">Se asignará al hito más reciente sin modelo</div></div>'+
+
+      '</div>'+
+
       '<div class="form-group full" style="margin-bottom:16px">'+
       '<label class="label">🔗 Hipervínculo (ACC, Drive, Dropbox, etc.)</label>'+
       '<input type="url" class="input" id="del-url" value="'+(d?d.url||'':'')+'" placeholder="https://docs.b360.autodesk.com/..."></div>'+
@@ -2194,14 +2244,18 @@ function openRenameHitoModal(groupId,currentLabel){
 // ══════════════════════════════════════════════════
 
 function renderModels(){
-  document.getElementById('topbar-actions').innerHTML='';
+  // Config button (admin only)
+  document.getElementById('topbar-actions').innerHTML=
+    isAdminLevel()?'<button class="btn btn-sm" onclick="openModelConfigModal()">⚙ Configurar filtro</button>':'';
+
   document.getElementById('content').innerHTML=loading();
   if(!APP.project)return;
 
+  var cfg=getModelConfig();
   sbGet('deliverables',
     '?project_id=eq.'+APP.project.id+
     '&is_active=eq.true'+
-    '&field_values->>tipo_documento=eq.MOD'+
+    getModelFilterParam()+
     '&order=code.asc'
   ).then(function(models){
     if(!models.length){
@@ -2209,8 +2263,10 @@ function renderModels(){
         '<div class="empty">'+
         '<div class="empty-icon">🏗️</div>'+
         '<div class="empty-title">Sin modelos registrados</div>'+
-        '<div class="empty-desc">Los entregables registrados con Tipo: MOD (Modelo BIM) aparecerán aquí.<br>'+
-        'Crea un entregable y selecciona <strong>MOD</strong> como Tipo de Documento.</div>'+
+        '<div class="empty-desc">Los entregables que cumplan con el filtro configurado aparecerán aquí.<br>'+
+        'Filtro actual: <strong>'+cfg.fieldKey+' = '+cfg.fieldValue+'</strong>'+
+        (isAdminLevel()?'<br><a href="#" onclick="openModelConfigModal();return false;" style="font-size:11px">Cambiar filtro</a>':'')+
+        '</div>'+
         '</div>';
       return;
     }
@@ -2312,6 +2368,68 @@ function renderModels(){
 // Configura los nombres y tipos de grupos
 // Un grupo se asigna a cada entregable como campo adicional
 // ══════════════════════════════════════════════════
+
+function openModelConfigModal(){
+  var cfg=getModelConfig();
+  // Build field key options from codeSchemas + generalSchemas
+  var allKeys=[].concat(
+    codeSchemas().map(function(s){return {key:s.key,name:s.name+' (código)',vals:s.allowed_values};}),
+    generalSchemas().map(function(s){return {key:s.key,name:s.name+' (general)',vals:null};})
+  );
+
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='model-cfg-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:520px">'+
+    '<div class="modal-header">'+
+    '<div><div class="modal-title">⚙ Configurar identificador de Modelos</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Define qué campo y valor identifica un entregable como Modelo BIM</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="mcfg-close">X</button></div>'+
+    '<div class="modal-body">'+
+    '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--brand)">'+
+    '📋 Configuración actual: <strong>'+cfg.fieldKey+' = "'+cfg.fieldValue+'"</strong>'+
+    '</div>'+
+    '<div class="form-grid">'+
+    '<div class="form-group"><label class="label">Campo identificador *</label>'+
+    '<select class="input" id="mcfg-key">'+
+    allKeys.map(function(f){
+      return '<option value="'+f.key+'"'+(f.key===cfg.fieldKey?' selected':'')+'>'+f.name+' ('+f.key+')</option>';
+    }).join('')+
+    // Also allow manual entry
+    '<option value="__custom"'+(allKeys.every(function(f){return f.key!==cfg.fieldKey;})?'':'')+'>Otro (escribir)</option>'+
+    '</select></div>'+
+    '<div class="form-group"><label class="label">Valor que identifica un modelo *</label>'+
+    '<input type="text" class="input" id="mcfg-val" value="'+cfg.fieldValue+'" placeholder="Ej: MOD, Modelo, BIM...">'+
+    '</div>'+
+    '</div>'+
+    // Preview: show values from the selected field
+    '<div style="margin-top:8px;padding:10px;background:var(--bg);border-radius:8px;font-size:11px;color:var(--text3)">'+
+    '💡 <strong>Ejemplos:</strong> '+
+    'Si tu campo es <em>tipo_documento</em> con valor <em>MOD</em> → todos los entregables con tipo MOD serán Modelos.<br>'+
+    'Si usas otro campo como <em>disciplina</em> con valor <em>BIM</em> → los de disciplina BIM serán Modelos.'+
+    '</div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="mcfg-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="mcfg-save">Guardar configuración</button>'+
+    '</div></div>';
+
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('mcfg-close').onclick=function(){overlay.remove();};
+  document.getElementById('mcfg-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('mcfg-save').onclick=function(){
+    var keyEl=document.getElementById('mcfg-key');
+    var valEl=document.getElementById('mcfg-val');
+    var key=keyEl.value.trim();
+    var val=valEl.value.trim();
+    if(!key||!val){toast('Campo y valor son obligatorios.','error');return;}
+    saveModelConfig(key,val);
+    toast('Configuración guardada. Recargando modelos...');
+    overlay.remove();
+    renderModels();
+  };
+}
 
 function renderGroups(){
   if(!isAdminLevel()){

@@ -7,7 +7,7 @@ function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:
 function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 
-var APP={user:null,project:null,schemas:[],users:[],packages:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
+var APP={user:null,project:null,schemas:[],users:[],packages:[],groups:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
 function can(a){
   if(!APP.user)return false;
@@ -221,13 +221,13 @@ function selectProject(projectId){
       var pid=APP.project.id;
       var p2=sbGet('field_schemas','?project_id=eq.'+pid+'&is_active=eq.true&order=field_order.asc,code_order.asc');
       var p3=sbGet('packages','?project_id=eq.'+pid+'&is_active=eq.true&order=code.asc');
-      // Cargar todos los miembros del proyecto con sus permisos por proyecto
       var p4=sbGet('project_members','?project_id=eq.'+pid+'&select=id,user_id,role,permissions,users(id,full_name,email,role,specialty,company,is_active)');
-      return Promise.all([p2,sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc'),p3,p4]);
+      var p5=sbGet('deliverable_groups','?project_id=eq.'+pid+'&is_active=eq.true&order=name.asc').catch(function(){return[];});
+      return Promise.all([p2,sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc'),p3,p4,p5]);
     })
     .then(function(r){
       APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];
-      APP.projectMembers=r[3]||[];
+      APP.projectMembers=r[3]||[];APP.groups=r[4]||[];
       // Guardar la membresía del usuario actual en este proyecto
       APP.projectMember=APP.projectMembers.find(function(m){return m.user_id===APP.user.id;})||null;
       try{
@@ -265,6 +265,8 @@ function showApp(user){
   var pm=APP.projectMember;
   var isAdminLvl=isAdmin||(pm&&pm.role==='project_admin');
   var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdminLvl?'flex':'none';
+  var modBtn=document.getElementById('sb-models');if(modBtn)modBtn.style.display='flex';
+  var grpBtn=document.getElementById('sb-groups');if(grpBtn)grpBtn.style.display=isAdminLvl?'flex':'none';
   var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdminLvl?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
   restoreSidebarState();
@@ -367,7 +369,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
 
 // ── NAV ──
-var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos'};
+var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables'};
 // ── SIDEBAR COLLAPSE ──
 function toggleSidebar(){
   var sb=document.querySelector('.sidebar');
@@ -398,8 +400,8 @@ function nav(view,el){
     contentEl.style.padding='20px';
     contentEl.style.overflowY='auto';
   }
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects})[view]&&
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects})[view]();
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups})[view]&&
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups})[view]();
 }
 
 // ── DELIVERABLES ──
@@ -593,7 +595,8 @@ function loadDeliverables(){
         return '<tr class="del-row"'+(APP.selectedIds.indexOf(d.id)>=0?' style="background:var(--brand-light)"':'')+' data-id="'+d.id+'">'+ 
           (canEdit?'<td class="scol del-chk" style="left:0;background:var(--surface);text-align:center;padding:0;width:'+W.chk+'px"><input type="checkbox"'+(APP.selectedIds.indexOf(d.id)>=0?' checked':'')+' class="row-chk" data-id="'+d.id+'" style="cursor:pointer;margin:0"></td>':'')+ 
           '<td class="scol" style="left:'+(canEdit?W.chk:0)+'px;background:var(--surface)">'+ 
-          '<span class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>'+
+          (d.url?'<a href="'+d.url+'" target="_blank" class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px;text-decoration:none;color:var(--brand)" title="Abrir enlace: '+d.url+'">'+d.code+' ↗</a>':
+          '<span class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>')+ 
           (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.work_package+'</div>':'')+
           '</td>'+
           '<td class="scol" style="left:'+stickyLeft2+'px;background:var(--surface)">'+
@@ -954,6 +957,12 @@ function openDeliverableModal(id){
           APP.packages.map(function(p){return '<option value="'+p.code+'"'+(d&&d.work_package===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
           '</select></div>';
       }
+      if(s.key==='grupo'||s.key==='group'){
+        return '<div class="form-group"><label class="label">'+s.name+'</label>'+
+          '<select class="input" id="gen_grupo"><option value="">Sin grupo</option>'+
+          (APP.groups||[]).map(function(g){return '<option value="'+g.code+'"'+(d&&d.group_code===g.code?' selected':'')+'>'+g.code+' - '+g.name+'</option>';}).join('')+
+          '</select></div>';
+      }
       if(s.key==='estado'){
         return '<div class="form-group"><label class="label">'+s.name+'</label>'+
           '<select class="input" id="gen_estado">'+
@@ -1031,7 +1040,10 @@ function openDeliverableModal(id){
       '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">1. Campos de codificacion</div>'+
       '<div class="form-grid" style="margin-bottom:16px">'+codeInputs+'</div>'+
       '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">2. Informacion del contenedor</div>'+
-      '<div class="form-grid" style="margin-bottom:16px">'+generalInputs+'</div>'+
+      '<div class="form-grid" style="margin-bottom:8px">'+generalInputs+'</div>'+
+      '<div class="form-group full" style="margin-bottom:16px">'+
+      '<label class="label">🔗 Hipervínculo (ACC, Drive, Dropbox, etc.)</label>'+
+      '<input type="url" class="input" id="del-url" value="'+(d?d.url||'':'')+'" placeholder="https://docs.b360.autodesk.com/..."></div>'+
       '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">3. Informacion por fase RIBA</div>'+
       phaseBlocks+
       '</div>'+
@@ -1098,12 +1110,15 @@ function saveDeliverable(id){
       for(var ki=0;ki<keys.length;ki++){var e=document.getElementById('gen_'+keys[ki]);if(e&&e.value)return e.value;}
       return null;
     }
+    // Read URL from dedicated input
+    var urlVal=document.getElementById('del-url')?document.getElementById('del-url').value.trim()||null:null;
     var payload={
       project_id:APP.project.id,code:code,name:name,field_values:fields,created_by:APP.user.id,
       description:gvSmart('description'),work_package:gvSmart('work_package'),
       file_format:gvSmart('file_format'),sheet_size:gvSmart('sheet_size'),
       scale:gvSmart('scale'),status:gvSmart('status')||'pending',
-      assigned_to:gvSmart('assigned_to'),predecessors:gvSmart('predecessors')
+      assigned_to:gvSmart('assigned_to'),predecessors:gvSmart('predecessors'),
+      url:urlVal
     };
     getPhaseGroups().forEach(function(ph){
       phaseSchemas(ph.key).forEach(function(s){
@@ -1290,7 +1305,7 @@ function renderProgressContent(deliverables,prod){
     kpiCard('Entregables','var(--brand-light)','var(--brand)',totalDels,'registrados')+
     kpiCard('Completados','var(--green-light)','var(--green)',completedDels,(totalDels?Math.round(completedDels/totalDels*100):0)+'%')+
     kpiCard('Unid. planificadas','#eff6ff','var(--brand)',totalPlan,'unidades')+
-    kpiCard('Unid. consumidas','var(--green-light)','var(--green)',totalCons,pctGen+'% avance')+
+    kpiCard('Avance promedio','var(--green-light)','var(--green)',(totalDels>0?Math.round(deliverables.reduce(function(a,d){var p=prodMap[d.id]||{cons:0};return a+Math.min(100,p.cons);},0)/totalDels):0)+'%','ponderado por entregable')+
     '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
     phaseStats.map(function(ps){
@@ -1331,13 +1346,14 @@ function renderProgressContent(deliverables,prod){
     '<div class="card" style="overflow:hidden">'+
     '<table class="tbl"><thead><tr>'+
     '<th>Entregable</th><th>Disciplina</th>'+
-    '<th>Plan.</th><th>Cons.</th><th>Avance</th>'+
+    '<th title="Peso (Unidades Productivas)">Peso</th><th title="% de avance registrado">Avance %</th>'+
     getPhaseGroups().map(function(ph){return '<th style="color:'+ph.color+';font-size:9px">'+ph.label+' Fecha</th>';}).join('')+
     '<th>Estado</th>'+(canProg?'<th>Registrar</th>':'')+
     '</tr></thead><tbody>'+
     deliverables.map(function(d){
       var p=prodMap[d.id]||{plan:0,cons:0};
-      var pct=p.plan>0?Math.round(p.cons/p.plan*100):0;
+      var weight=p.plan||0;
+      var pct=Math.min(100,Math.max(0,Math.round(p.cons)));
       var today=new Date();
       var phaseDates=getPhaseGroups().map(function(ph){
         var dt=d[ph.key+'_delivery_date'];
@@ -1356,38 +1372,70 @@ function renderProgressContent(deliverables,prod){
         '<span style="font-size:10px;color:var(--text3)">'+pct+'%</span></div></td>'+
         phaseDates+
         '<td>'+statusBadge(d.status)+'</td>'+
-        (canProg?'<td><button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="openProgressModal(\''+d.id+'\',\''+d.code+'\','+p.plan+','+p.cons+')">Registrar</button></td>':'')+
+        (canProg?'<td><button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="openProgressModal(\''+d.id+'\',\''+d.code+'\','+weight+','+pct+')">Registrar</button></td>':'')+
         '</tr>';
     }).join('')+
     '</tbody></table></div>';
   el.innerHTML=html;
 }
 
-function openProgressModal(delId,code,plan,cons){
+function openProgressModal(delId,code,plan,pct){
   if(!can('can_register_progress')){toast('Sin permiso.','error');return;}
-  document.getElementById('modal-container').innerHTML=
-    '<div class="modal-overlay" id="prog-modal"><div class="modal" style="max-width:420px">'+
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='prog-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:440px">'+
     '<div class="modal-header"><div class="modal-title">Registrar avance</div>'+
-    '<button class="btn btn-ghost btn-sm" onclick="closeModal(\'prog-modal\')">X</button></div>'+
-    '<div class="modal-body"><div style="background:var(--bg);border-radius:var(--r);padding:10px;margin-bottom:14px;border:1px solid var(--border)">'+
-    '<span class="code-chip" style="font-size:9px">'+code+'</span></div>'+
-    '<div class="form-grid">'+
-    '<div class="form-group"><label class="label">Unidades planificadas</label><input type="number" class="input" id="prog-plan" value="'+plan+'" min="0"></div>'+
-    '<div class="form-group"><label class="label">Unidades consumidas</label><input type="number" class="input" id="prog-cons" value="'+cons+'" min="0"></div>'+
-    '</div></div>'+
-    '<div class="modal-footer"><button class="btn" onclick="closeModal(\'prog-modal\')">Cancelar</button>'+
-    '<button class="btn btn-primary" onclick="saveProgress(\''+delId+'\')">Guardar</button></div></div></div>';
+    '<button class="btn btn-ghost btn-sm" id="pm-close">X</button></div>'+
+    '<div class="modal-body">'+
+    '<div style="background:var(--bg);border-radius:var(--r);padding:10px 12px;margin-bottom:16px;border:1px solid var(--border);display:flex;align-items:center;gap:10px">'+
+    '<span class="code-chip" style="font-size:10px">'+code+'</span>'+
+    '<span style="font-size:11px;color:var(--text3)">Peso: <strong style="color:var(--brand)">'+plan+'</strong> unidad'+(plan!==1?'es':'')+' productiva'+(plan!==1?'s':'')+'</span>'+
+    '</div>'+
+    '<label class="label" style="font-size:13px;margin-bottom:10px;display:block">Porcentaje de avance</label>'+
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'+
+    '<input type="range" id="prog-pct-range" min="0" max="100" value="'+pct+'" style="flex:1;accent-color:var(--brand)" oninput="document.getElementById(\'prog-pct-num\').value=this.value;updateProgressBar()">'+
+    '<input type="number" id="prog-pct-num" min="0" max="100" value="'+pct+'" style="width:64px;text-align:center;font-size:18px;font-weight:700" class="input" oninput="document.getElementById(\'prog-pct-range\').value=this.value;updateProgressBar()">'+
+    '<span style="font-size:16px;font-weight:700;color:var(--brand)">%</span>'+
+    '</div>'+
+    '<div style="height:10px;border-radius:5px;background:var(--border2);overflow:hidden;margin-bottom:6px">'+
+    '<div id="prog-preview-fill" style="height:100%;width:'+pct+'%;background:'+(pct>=80?'var(--green)':pct>=50?'var(--brand)':'var(--amber)')+';transition:width .2s;border-radius:5px"></div></div>'+
+    '<div style="font-size:10px;color:var(--text3);text-align:center;margin-bottom:4px" id="prog-preview-label">'+pct+'% completado</div>'+
+    '</div>'+
+    '<div class="modal-footer"><button class="btn" id="pm-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="pm-save">Guardar avance</button></div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('pm-close').onclick=function(){overlay.remove();};
+  document.getElementById('pm-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('pm-save').onclick=function(){saveProgress(delId,overlay);};
 }
 
-function saveProgress(delId){
-  var plan=parseInt(document.getElementById('prog-plan').value)||0;
-  var cons=parseInt(document.getElementById('prog-cons').value)||0;
-  if(cons>plan){toast('Consumidas no puede superar planificadas.','error');return;}
+function updateProgressBar(){
+  var pct=Math.min(100,Math.max(0,parseInt(document.getElementById('prog-pct-num').value)||0));
+  var fill=document.getElementById('prog-preview-fill');
+  var label=document.getElementById('prog-preview-label');
+  if(fill){fill.style.width=pct+'%';fill.style.background=pct>=80?'var(--green)':pct>=50?'var(--brand)':'var(--amber)';}
+  if(label)label.textContent=pct+'% completado';
+}
+
+
+function saveProgress(delId,overlay){
+  var pct=parseInt(document.getElementById('prog-pct-num').value)||0;
+  pct=Math.min(100,Math.max(0,pct));
+  // progress_pct is stored in consumed_qty (0-100 range), planned_qty = weight (unchanged)
   sbGet('production_units','?deliverable_id=eq.'+delId+'&limit=1').then(function(ex){
-    return ex.length
-      ?sbPatch('production_units','deliverable_id=eq.'+delId,{planned_qty:plan,consumed_qty:cons})
-      :sbPost('production_units',{deliverable_id:delId,planned_qty:plan,consumed_qty:cons,unit_label:'und'});
-  }).then(function(){closeModal('prog-modal');toast('Avance guardado.');renderProgress();}).catch(function(e){toast(e.message,'error');});
+    if(ex.length){
+      // Keep planned_qty (weight) unchanged, update consumed_qty = pct
+      return sbPatch('production_units','deliverable_id=eq.'+delId,{consumed_qty:pct});
+    }else{
+      // New record: consumed_qty = pct, planned_qty default 1 (weight)
+      return sbPost('production_units',{deliverable_id:delId,planned_qty:1,consumed_qty:pct,unit_label:'%'});
+    }
+  }).then(function(){
+    if(overlay)overlay.remove();else closeModal('prog-modal');
+    toast('Avance guardado.');
+    renderProgress();
+  }).catch(function(e){toast(e.message,'error');});
 }
 
 // ── SCHEMAS ──
@@ -1802,7 +1850,11 @@ function loadPackages(){
 }
 
 function openPackageModal(pid){
-  var p=pid?APP.packages.find(function(x){return x.id===pid;}):null;
+  // Always fetch fresh from DB to avoid stale APP.packages cache
+  var fetchP=pid
+    ?sbGet('packages','?id=eq.'+pid+'&limit=1').then(function(r){return r[0]||null;})
+    :Promise.resolve(null);
+  fetchP.then(function(p){
   var discSchema=codeSchemas().find(function(s){return s.key==='disciplina';});
   var discOpts='<option value="">Sin disciplina</option>';
   if(discSchema&&discSchema.allowed_values){
@@ -1839,6 +1891,7 @@ function openPackageModal(pid){
   document.getElementById('pkg-close-btn').onclick=function(){closeModal('pkg-modal');};
   document.getElementById('pkg-cancel-btn').onclick=function(){closeModal('pkg-modal');};
   document.getElementById('pkg-save-btn').onclick=function(){savePackage(pid||null);};
+  }); // end fetchP.then
 }
 
 function savePackage(pid){
@@ -2085,6 +2138,252 @@ function openRenameHitoModal(groupId,currentLabel){
     var ids=APP.schemas.filter(function(s){return s.field_group===groupId;}).map(function(s){return s.id;});
     var updates=ids.map(function(id){return sbPatch('field_schemas','id=eq.'+id,{description:'hito:'+newName});});
     Promise.all(updates).then(function(){toast('Hito renombrado.');overlay.remove();renderSchemas();})
+      .catch(function(e){toast(e.message,'error');});
+  };
+}
+
+
+// ══════════════════════════════════════════════════
+// ── MODELOS BIM ──
+// Entregables con tipo_documento = 'MOD'
+// ══════════════════════════════════════════════════
+
+function renderModels(){
+  document.getElementById('topbar-actions').innerHTML='';
+  document.getElementById('content').innerHTML=loading();
+  if(!APP.project)return;
+
+  sbGet('deliverables',
+    '?project_id=eq.'+APP.project.id+
+    '&is_active=eq.true'+
+    '&field_values->>tipo_documento=eq.MOD'+
+    '&order=code.asc'
+  ).then(function(models){
+    if(!models.length){
+      document.getElementById('content').innerHTML=
+        '<div class="empty">'+
+        '<div class="empty-icon">🏗️</div>'+
+        '<div class="empty-title">Sin modelos registrados</div>'+
+        '<div class="empty-desc">Los entregables registrados con Tipo: MOD (Modelo BIM) aparecerán aquí.<br>'+
+        'Crea un entregable y selecciona <strong>MOD</strong> como Tipo de Documento.</div>'+
+        '</div>';
+      return;
+    }
+
+    // Group by discipline
+    var byDisc={};
+    models.forEach(function(m){
+      var disc=(m.field_values&&m.field_values.disciplina)||'Sin disciplina';
+      if(!byDisc[disc])byDisc[disc]=[];
+      byDisc[disc].push(m);
+    });
+
+    var html='<div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">'+
+      '<div style="font-size:12px;color:var(--text3)">'+models.length+' modelo'+(models.length>1?'s':'')+' registrado'+(models.length>1?'s':'')+' en este proyecto</div>'+
+      '</div>';
+
+    Object.entries(byDisc).forEach(function(entry){
+      var disc=entry[0]; var items=entry[1];
+      html+='<div style="margin-bottom:20px">'+
+        '<div style="font-size:11px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+
+        '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand)"></span>'+disc+
+        ' <span style="font-size:9px;color:var(--text3);font-weight:400;text-transform:none">('+items.length+' modelo'+(items.length>1?'s':'')+')</span></div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">'+
+        items.map(function(m){
+          // Get deliverables associated to this model
+          var assocCount=0; // Will be loaded async if needed
+          var statusInfo=STATUS_CFG[m.status]||STATUS_CFG.pending;
+          // Build phase info
+          var phaseInfo=getPhaseGroups().map(function(ph){
+            var lod=m[ph.key+'_lod']||m[(ph.key.indexOf(ph.key+'_')===0?ph.key+'_lod':ph.key+'_lod')];
+            var date=m[ph.key+'_delivery_date'];
+            if(!lod&&!date)return '';
+            return '<span style="font-size:9px;color:'+ph.color+';font-weight:600">'+ph.label+
+              (lod?' LOD'+lod:'')+(date?' · '+fmtDateShort(date):'')+
+              '</span>';
+          }).filter(Boolean).join(' · ');
+
+          return '<div class="card" style="padding:14px;border-left:3px solid var(--brand)">'+
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">'+
+            // Code — clickable if url
+            (m.url?
+              '<a href="'+m.url+'" target="_blank" class="code-chip" style="font-size:10px;text-decoration:none;color:var(--brand)" title="Abrir en repositorio">'+m.code+' ↗</a>':
+              '<span class="code-chip" style="font-size:10px">'+m.code+'</span>')+
+            '<span class="badge '+statusInfo.cls+'" style="font-size:9px">'+statusInfo.label+'</span>'+
+            '</div>'+
+            '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;line-height:1.3">'+m.name+'</div>'+
+            (m.description?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.4">'+m.description+'</div>':'')+
+            (phaseInfo?'<div style="margin-bottom:8px">'+phaseInfo+'</div>':'')+
+            (m.work_package?'<div style="font-size:9px;color:var(--text3)">📦 '+m.work_package+'</div>':'')+
+            // Associated deliverables
+            '<div id="assoc-'+m.id+'" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2);font-size:10px;color:var(--text3)">'+
+            '<span>Cargando entregables asociados...</span></div>'+
+            (can('can_edit_deliverables')?
+              '<div style="margin-top:8px">'+
+              '<button class="btn btn-ghost btn-sm" onclick="openDeliverableModal(\''+m.id+'\')" style="font-size:10px;width:100%">✎ Editar modelo</button>'+
+              '</div>':'')+
+            '</div>';
+        }).join('')+
+        '</div></div>';
+    });
+
+    document.getElementById('content').innerHTML=html;
+
+    // Load associated deliverables for each model async
+    models.forEach(function(m){
+      sbGet('deliverables',
+        '?project_id=eq.'+APP.project.id+
+        '&is_active=eq.true'+
+        '&select=id,code,name,status'+
+        // Find deliverables where any phase doc_assoc = this model's code
+        '&or=(riba2_doc_assoc.eq.'+encodeURIComponent(m.code)+
+        ',riba3_doc_assoc.eq.'+encodeURIComponent(m.code)+
+        ',riba4_doc_assoc.eq.'+encodeURIComponent(m.code)+')'
+      ).then(function(assoc){
+        var el=document.getElementById('assoc-'+m.id);
+        if(!el)return;
+        if(!assoc.length){
+          el.innerHTML='<span style="color:var(--text3)">Sin entregables asociados</span>';
+        }else{
+          el.innerHTML='<div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px">'+
+            assoc.length+' entregable'+(assoc.length>1?'s':'')+' asociado'+(assoc.length>1?'s':'')+':</div>'+
+            assoc.map(function(d){
+              return '<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'+
+                '<span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
+                '<span style="font-size:10px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</span>'+
+                statusBadge(d.status)+
+                '</div>';
+            }).join('');
+        }
+      }).catch(function(){});
+    });
+  }).catch(function(e){
+    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+  });
+}
+
+// ══════════════════════════════════════════════════
+// ── GRUPOS DE ENTREGABLES ──
+// Configura los nombres y tipos de grupos
+// Un grupo se asigna a cada entregable como campo adicional
+// ══════════════════════════════════════════════════
+
+function renderGroups(){
+  if(!isAdminLevel()){
+    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Acceso restringido</div></div>';
+    return;
+  }
+  document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-primary btn-sm" onclick="openGroupModal(null)">+ Nuevo grupo</button>';
+  document.getElementById('content').innerHTML=loading();
+
+  sbGet('deliverable_groups','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=name.asc')
+    .then(function(groups){
+      APP.groups=groups;
+      if(!groups.length){
+        document.getElementById('content').innerHTML=
+          '<div class="empty">'+
+          '<div class="empty-icon">🗂️</div>'+
+          '<div class="empty-title">Sin grupos configurados</div>'+
+          '<div class="empty-desc">Los grupos permiten clasificar entregables por categoría personalizada.<br>'+
+          'Ej: Arquitectura, Estructuras, Instalaciones, BIM...</div>'+
+          '</div>';
+        return;
+      }
+      var rows=groups.map(function(g){
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td><span class="code-chip">'+g.code+'</span></td>'+
+          '<td style="font-weight:600;color:var(--text)">'+g.name+'</td>'+
+          '<td>'+(g.type?'<span class="badge b-bim" style="font-size:10px">'+g.type+'</span>':'--')+'</td>'+
+          '<td style="font-size:11px;color:var(--text3)">'+(g.description||'--')+'</td>'+
+          '<td></td>';
+        var btnEdit=document.createElement('button');btnEdit.className='btn btn-ghost btn-sm';
+        btnEdit.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        btnEdit.onclick=(function(gid){return function(){openGroupModal(gid);};})(g.id);
+        var btnDel=document.createElement('button');btnDel.className='btn btn-ghost btn-sm';btnDel.style.color='var(--red)';
+        btnDel.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+        btnDel.onclick=(function(gid,gname){return function(){confirmDeleteGroup(gid,gname);};})(g.id,g.name);
+        var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:4px;justify-content:flex-end';
+        wrap.appendChild(btnEdit);wrap.appendChild(btnDel);
+        tr.lastElementChild.appendChild(wrap);
+        return tr.outerHTML;
+      }).join('');
+      document.getElementById('content').innerHTML=
+        '<div class="card" style="overflow:hidden"><table class="tbl"><thead><tr>'+
+        '<th>Código</th><th>Nombre</th><th>Tipo</th><th>Descripción</th><th style="text-align:right">Acciones</th>'+
+        '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }).catch(function(e){
+      document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+    });
+}
+
+function openGroupModal(gid){
+  var fetchG=gid
+    ?sbGet('deliverable_groups','?id=eq.'+gid+'&limit=1').then(function(r){return r[0]||null;})
+    :Promise.resolve(null);
+  fetchG.then(function(g){
+    var overlay=document.createElement('div');overlay.id='grp-modal';overlay.className='modal-overlay';
+    overlay.innerHTML=
+      '<div class="modal"><div class="modal-header">'+
+      '<div class="modal-title">'+(g?'Editar grupo: '+g.name:'Nuevo grupo de entregables')+'</div>'+
+      '<button class="btn btn-ghost btn-sm" id="grp-close">X</button></div>'+
+      '<div class="modal-body"><div class="form-grid">'+
+      '<div class="form-group"><label class="label">Código *</label>'+
+      '<input type="text" class="input" id="grp-code" value="'+(g?g.code:'')+'" placeholder="Ej: GRP-ARQ"'+(g?' disabled':'')+' style="font-family:monospace"></div>'+
+      '<div class="form-group"><label class="label">Nombre *</label>'+
+      '<input type="text" class="input" id="grp-name" value="'+(g?g.name:'')+'" placeholder="Ej: Arquitectura"></div>'+
+      '<div class="form-group"><label class="label">Tipo</label>'+
+      '<select class="input" id="grp-type">'+
+      '<option value="">Sin tipo</option>'+
+      ['Diseño','Coordinación','Construcción','Especialidad','BIM','Documentación','Otro'].map(function(t){
+        return '<option value="'+t+'"'+(g&&g.type===t?' selected':'')+'>'+t+'</option>';
+      }).join('')+
+      '</select></div>'+
+      '<div class="form-group full"><label class="label">Descripción</label>'+
+      '<input type="text" class="input" id="grp-desc" value="'+(g?g.description||'':'')+'" placeholder="Descripción del grupo"></div>'+
+      '</div></div>'+
+      '<div class="modal-footer"><button class="btn" id="grp-cancel">Cancelar</button>'+
+      '<button class="btn btn-primary" id="grp-save">'+(g?'Actualizar grupo':'Crear grupo')+'</button>'+
+      '</div></div>';
+    document.getElementById('modal-container').appendChild(overlay);
+    document.getElementById('grp-close').onclick=function(){overlay.remove();};
+    document.getElementById('grp-cancel').onclick=function(){overlay.remove();};
+    document.getElementById('grp-save').onclick=function(){saveGroup(gid||null,overlay);};
+  });
+}
+
+function saveGroup(gid,overlay){
+  var code=document.getElementById('grp-code').value.trim().toUpperCase();
+  var name=document.getElementById('grp-name').value.trim();
+  if(!code||!name){toast('Código y nombre son obligatorios.','error');return;}
+  var payload={project_id:APP.project.id,code:code,name:name,
+    type:document.getElementById('grp-type').value||null,
+    description:document.getElementById('grp-desc').value||null,
+    is_active:true};
+  var req=gid?sbPatch('deliverable_groups','id=eq.'+gid,payload):sbPost('deliverable_groups',payload);
+  req.then(function(){
+    toast(gid?'Grupo actualizado.':'Grupo creado.');
+    overlay.remove();
+    renderGroups();
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+function confirmDeleteGroup(gid,gname){
+  var overlay=document.createElement('div');overlay.id='grp-confirm';overlay.className='modal-overlay';
+  overlay.innerHTML='<div class="modal" style="max-width:380px">'+
+    '<div class="modal-header"><div class="modal-title">Eliminar grupo?</div>'+
+    '<button class="btn btn-ghost btn-sm" id="gc-close">X</button></div>'+
+    '<div class="modal-body"><p style="font-size:13px;color:var(--text2)">¿Eliminar el grupo <strong>'+gname+'</strong>?</p>'+
+    '<p style="font-size:11px;color:var(--text3);margin-top:6px">Los entregables con este grupo no se verán afectados.</p></div>'+
+    '<div class="modal-footer"><button class="btn" id="gc-cancel">Cancelar</button>'+
+    '<button class="btn btn-danger" id="gc-del">Eliminar</button></div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('gc-close').onclick=function(){overlay.remove();};
+  document.getElementById('gc-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('gc-del').onclick=function(){
+    sbPatch('deliverable_groups','id=eq.'+gid,{is_active:false})
+      .then(function(){overlay.remove();toast('Grupo eliminado.');renderGroups();})
       .catch(function(e){toast(e.message,'error');});
   };
 }

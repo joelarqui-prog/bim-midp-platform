@@ -972,9 +972,13 @@ function openDeliverableModal(id){
     getModelFilterParam()+
     '&select=id,code,name&order=code.asc'
   ).catch(function(){return [];});
-  Promise.all([getD,getMods]).then(function(res){
+  var getUnits=id
+    ?sbGet('production_units','?deliverable_id=eq.'+id+'&limit=1').then(function(r){return r[0]||null;})
+    :Promise.resolve(null);
+  Promise.all([getD,getMods,getUnits]).then(function(res){
   var d=res[0];
   window._modDels=res[1];
+  window._delUnits=(res[2]&&res[2].planned_qty!=null)?res[2].planned_qty:1;
     var fv=d?d.field_values||{}:{};
     var codeInputs=codeSchemas().map(function(s){
       var val=fv[s.key]||'';
@@ -1104,7 +1108,7 @@ function openDeliverableModal(id){
       // ── Campos fijos siempre presentes (independientes de field_schemas) ──
       '<div class="form-grid" style="margin-bottom:8px">'+
 
-      // Paquete — siempre visible si hay paquetes (o campo vacío si no hay)
+      // Paquete — siempre visible
       (generalSchemas().every(function(s){return s.key!=='paquete'&&s.key!=='work_package';})?
         '<div class="form-group"><label class="label">Paquete de trabajo</label>'+
         '<select class="input" id="del-pkg-fixed">'+
@@ -1112,12 +1116,25 @@ function openDeliverableModal(id){
         APP.packages.map(function(p){return '<option value="'+p.code+'"'+(d&&d.work_package===p.code?' selected':'')+'>'+p.code+' — '+p.name+'</option>';}).join('')+
         '</select></div>':'')+
 
-      // Modelo asociado — siempre visible, lista de modelos del proyecto
+      // Grupo de entregables — siempre visible si hay grupos configurados
+      '<div class="form-group"><label class="label">🗂️ Grupo de entregables</label>'+
+      '<select class="input" id="del-group-fixed">'+
+      '<option value="">Sin grupo</option>'+
+      (APP.groups||[]).map(function(g){
+        return '<option value="'+g.code+'"'+(d&&d.group_code===g.code?' selected':'')+'>'+g.code+' — '+g.name+(g.type?' ('+g.type+')':'')+'</option>';
+      }).join('')+
+      '</select></div>'+
+
+      // Unidades productivas (peso del entregable para control de avance)
+      '<div class="form-group"><label class="label">⚖️ Unidades productivas <span style="font-size:9px;color:var(--text3);font-weight:400">(peso en control de avance)</span></label>'+
+      '<input type="number" class="input" id="del-units-fixed" min="0" step="0.5" value="'+(d&&window._delUnits?window._delUnits:1)+'" placeholder="1">'+
+      '<div style="font-size:9px;color:var(--text3);margin-top:3px">Mayor peso = mayor impacto en el % de avance global del proyecto</div></div>'+
+
+      // Modelo asociado — siempre visible
       '<div class="form-group"><label class="label">🏗️ Modelo BIM asociado</label>'+
       '<select class="input" id="del-model-fixed">'+
       '<option value="">Sin modelo asociado</option>'+
       (window._modDels||[]).map(function(m){
-        // check if any phase already references this model
         var isSelected=d&&(d.riba2_doc_assoc===m.code||d.riba3_doc_assoc===m.code||d.riba4_doc_assoc===m.code);
         return '<option value="'+m.code+'"'+(isSelected?' selected':'')+'>'+m.code+' — '+m.name+'</option>';
       }).join('')+
@@ -1194,16 +1211,33 @@ function saveDeliverable(id){
       for(var ki=0;ki<keys.length;ki++){var e=document.getElementById('gen_'+keys[ki]);if(e&&e.value)return e.value;}
       return null;
     }
-    // Read URL from dedicated input
+    // ── Read all fixed fields (always present regardless of field_schemas) ──
     var urlVal=document.getElementById('del-url')?document.getElementById('del-url').value.trim()||null:null;
+    var fixedPkgEl=document.getElementById('del-pkg-fixed');
+    var fixedPkgVal=fixedPkgEl?fixedPkgEl.value||null:null;
+    var fixedGroupEl=document.getElementById('del-group-fixed');
+    var fixedGroupVal=fixedGroupEl?fixedGroupEl.value||null:null;
+    var fixedUnitsEl=document.getElementById('del-units-fixed');
+    var fixedUnitsVal=fixedUnitsEl?parseFloat(fixedUnitsEl.value)||1:1;
+    var fixedModelEl=document.getElementById('del-model-fixed');
+    var fixedModelVal=fixedModelEl?fixedModelEl.value||null:null;
+
     var payload={
       project_id:APP.project.id,code:code,name:name,field_values:fields,created_by:APP.user.id,
-      description:gvSmart('description'),work_package:gvSmart('work_package'),
+      description:gvSmart('description'),
+      work_package:fixedPkgVal||gvSmart('work_package'),
       file_format:gvSmart('file_format'),sheet_size:gvSmart('sheet_size'),
       scale:gvSmart('scale'),status:gvSmart('status')||'pending',
       assigned_to:gvSmart('assigned_to'),predecessors:gvSmart('predecessors'),
-      url:urlVal
+      url:urlVal,
+      group_code:fixedGroupVal||gvSmart('group_code')||null
     };
+    // Apply fixed model to the first phase doc_assoc without a value
+    if(fixedModelVal){
+      ['riba2','riba3','riba4'].forEach(function(phKey){
+        if(!payload[phKey+'_doc_assoc'])payload[phKey+'_doc_assoc']=fixedModelVal;
+      });
+    }
     // Known phases → direct DB columns; custom hitos → field_values JSONB
     var customHitoFV={};
     getPhaseGroups().forEach(function(ph){
@@ -1226,7 +1260,19 @@ function saveDeliverable(id){
     var p=id
       ?sbGet('deliverables','?id=eq.'+id+'&select=version').then(function(r){payload.version=((r[0]?r[0].version:1)||1)+1;return sbPatch('deliverables','id=eq.'+id,payload);})
       :sbPost('deliverables',payload);
-    return p.then(function(){
+    return p.then(function(saved){
+      // Save / update production_units with fixedUnitsVal as weight (planned_qty)
+      // consumed_qty stays as-is (progress %)
+      var delId=id||( Array.isArray(saved)?saved[0].id:(saved&&saved.id?saved.id:null) );
+      if(delId){
+        sbGet('production_units','?deliverable_id=eq.'+delId+'&limit=1').then(function(ex){
+          if(ex.length){
+            sbPatch('production_units','deliverable_id=eq.'+delId,{planned_qty:fixedUnitsVal});
+          }else{
+            sbPost('production_units',{deliverable_id:delId,planned_qty:fixedUnitsVal,consumed_qty:0,unit_label:'UP'});
+          }
+        }).catch(function(){});
+      }
       toast(id?'Entregable actualizado.':'Entregable creado.');
       closeModal('del-modal');loadDeliverables();
     });

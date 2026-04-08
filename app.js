@@ -28,6 +28,12 @@ function can(a){
 // isAdminLevel: true para admin Y project_admin
 function isAdminLevel(){if(!APP.user)return false;if(APP.user.role==='admin')return true;var pm=APP.projectMember;return pm&&(pm.role==='project_admin');}
 
+// Returns true for phases that have dedicated columns in deliverables table
+function isKnownPhase(phKey){
+  return phKey==='riba2'||phKey==='riba3'||phKey==='riba4';
+}
+
+
 // Grupos de fases RIBA — fijos, siempre los mismos 3
 // PHASE_GROUPS is now dynamic — built from schemas
 // Use getPhaseGroups() instead of PHASE_GROUPS directly
@@ -124,11 +130,15 @@ function getFieldVal(d,s){
     if(col==='assigned_to'){var u=APP.users.find(function(u){return u.id===d[col];});return u?u.full_name:'';}
     return col?d[col]||'':'';
   }
-  // phase field — columna directa, normalizando prefijo del hito
-  // s.key puede ser 'lod' o 'riba2_lod'; la columna en BD siempre es 'riba2_lod'
+  // phase field: known phases → direct column; custom hitos → field_values JSONB
   var pGroup=s.field_group;
-  var dbKey=s.key.indexOf(pGroup+'_')===0?s.key:pGroup+'_'+s.key;
-  return d[dbKey]||d[s.key]||'';
+  if(isKnownPhase(pGroup)){
+    var dbKey=s.key.indexOf(pGroup+'_')===0?s.key:pGroup+'_'+s.key;
+    return d[dbKey]||d[s.key]||'';
+  }else{
+    var fvKey=pGroup+'__'+(s.key.indexOf(pGroup+'_')===0?s.key.slice(pGroup.length+1):s.key);
+    return (d.field_values&&d.field_values[fvKey])||'';
+  }
 }
 
 // ── AUTH ──
@@ -830,17 +840,26 @@ function saveBulkEdit(overlay){
     }
   });
 
-  // Campos de hito (columnas directas con prefijo ph.key_campo)
+  // Campos de hito: known → direct columns; custom → field_values JSONB
+  var bulkCustomFV={};
   getPhaseGroups().forEach(function(ph){
     phaseSchemas(ph.key).forEach(function(s){
       var el=document.getElementById('bulk-ph-'+s.key);
       if(el&&el.value){
-        var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
-        payload[dbCol]=el.value||null;
+        if(isKnownPhase(ph.key)){
+          var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
+          payload[dbCol]=el.value||null;
+        }else{
+          var fvKey=ph.key+'__'+(s.key.indexOf(ph.key+'_')===0?s.key.slice(ph.key.length+1):s.key);
+          bulkCustomFV[fvKey]=el.value||null;
+        }
         hasChange=true;
       }
     });
   });
+  if(Object.keys(bulkCustomFV).length>0&&!payload.field_values){
+    payload._customHitoFV=bulkCustomFV; // handled in PATCH loop
+  }
 
   // Campos de codificación — se guardan en field_values JSONB
   // Para edición masiva, necesitamos leer el field_values actual de cada
@@ -888,7 +907,13 @@ function saveBulkEdit(overlay){
   }else{
     // Sin cambios en código — PATCH directo para todos
     var promises=ids.map(function(id){
-      return sbPatch('deliverables','id=eq.'+id,payload);
+      var p=payload;
+      // If there are custom hito changes, need to merge per-deliverable field_values
+      if(payload._customHitoFV){
+        p=Object.assign({},payload);delete p._customHitoFV;
+        p.field_values=Object.assign({},payload._existingFV||{},bulkCustomFV);
+      }
+      return sbPatch('deliverables','id=eq.'+id,p);
     });
     promise=Promise.all(promises);
   }
@@ -1002,9 +1027,18 @@ function openDeliverableModal(id){
       var fields=phaseSchemas(ph.key);
       if(!fields.length)return '';
       var inputs=fields.map(function(s){
-        var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
-        var val=d?(d[dbCol]||d[s.key]||''):'';
-        var isFull=dbCol===ph.key+'_doc_assoc'||s.key===ph.key+'_doc_assoc';
+        var val='';
+        var isFull=false;
+        if(isKnownPhase(ph.key)){
+          var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
+          val=d?(d[dbCol]||d[s.key]||''):'';
+          isFull=dbCol===ph.key+'_doc_assoc'||s.key===ph.key+'_doc_assoc';
+        }else{
+          // Custom hito: read from field_values JSONB
+          var fvKey=ph.key+'__'+(s.key.indexOf(ph.key+'_')===0?s.key.slice(ph.key.length+1):s.key);
+          val=d&&d.field_values?d.field_values[fvKey]||'':'';
+          isFull=s.key.indexOf('_doc_assoc')>=0;
+        }
         var inp='';
         if(s.key.indexOf('_doc_assoc')>=0){
           inp='<select class="input" id="ph_'+s.key+'">'+
@@ -1120,14 +1154,25 @@ function saveDeliverable(id){
       assigned_to:gvSmart('assigned_to'),predecessors:gvSmart('predecessors'),
       url:urlVal
     };
+    // Known phases → direct DB columns; custom hitos → field_values JSONB
+    var customHitoFV={};
     getPhaseGroups().forEach(function(ph){
       phaseSchemas(ph.key).forEach(function(s){
         var el=document.getElementById('ph_'+s.key);
         var val=el?el.value||null:null;
-        var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
-        payload[dbCol]=val;
+        if(isKnownPhase(ph.key)){
+          var dbCol=s.key.indexOf(ph.key+'_')===0?s.key:ph.key+'_'+s.key;
+          payload[dbCol]=val;
+        }else{
+          // Custom hito: store in field_values with double-underscore separator
+          var fvKey=ph.key+'__'+(s.key.indexOf(ph.key+'_')===0?s.key.slice(ph.key.length+1):s.key);
+          if(val)customHitoFV[fvKey]=val;
+        }
       });
     });
+    if(Object.keys(customHitoFV).length>0){
+      payload.field_values=Object.assign({},fields,customHitoFV);
+    }
     var p=id
       ?sbGet('deliverables','?id=eq.'+id+'&select=version').then(function(r){payload.version=((r[0]?r[0].version:1)||1)+1;return sbPatch('deliverables','id=eq.'+id,payload);})
       :sbPost('deliverables',payload);

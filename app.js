@@ -471,6 +471,9 @@ function renderDeliverables(){
   document.getElementById('topbar-actions').innerHTML=
     '<button class="btn btn-sm" onclick="exportCSV()">&#8595; CSV</button>'+
     '<button class="btn btn-sm" onclick="exportMIDP()">&#8595; MIDP</button>'+
+    (canCreate?'<button class="btn btn-sm" onclick="downloadDelTemplate()">&#8659; Plantilla</button>':'')+
+    (canCreate?'<button class="btn btn-sm" onclick="importDeliverables()">&#8593; Importar</button>':'')+
+    
     (canEdit?'<button class="btn btn-sm" id="btn-bulk-edit" onclick="openBulkEditModal()" style="display:none">&#9998; Editar seleccion</button>':'')+
     (canCreate?'<button class="btn btn-primary btn-sm" onclick="openDeliverableModal()">+ Nuevo entregable</button>':'');
   // Clear selection when re-rendering
@@ -1371,7 +1374,9 @@ function exportMIDP(){
 
 // ── PROGRESS ──
 function renderProgress(){
-  document.getElementById('topbar-actions').innerHTML=isAdminLevel()?'<button class="btn btn-sm" onclick="openProgressConfigPanel()">⚙ Configurar vista</button>':'';
+  document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-sm" onclick="exportProgressPDF()">&#8659; Exportar PDF</button>'+
+    (isAdminLevel()?'<button class="btn btn-sm" onclick="openProgressConfigPanel()">⚙ Configurar vista</button>':'');
   document.getElementById('content').innerHTML=
     '<div class="card" style="padding:14px 16px;margin-bottom:16px">'+
     '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Filtros</div>'+
@@ -1722,6 +1727,8 @@ function renderSchemas(){
     return;
   }
   document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-sm" onclick="downloadSchemaTemplate()">&#8659; Plantilla</button>'+
+    '<button class="btn btn-sm" onclick="importSchemasFromExcel()">&#8593; Importar campos</button>'+
     '<button class="btn btn-sm btn-primary" onclick="openNewHitoModal()">+ Nuevo hito</button>';
   document.getElementById('content').innerHTML=loading();
   sbGet('field_schemas','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=field_order.asc,code_order.asc').then(function(schemas){
@@ -3058,4 +3065,573 @@ function confirmDeleteGroup(gid,gname){
       .then(function(){overlay.remove();toast('Grupo eliminado.');renderGroups();})
       .catch(function(e){toast(e.message,'error');});
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── IMPORTAR / EXPORTAR PLANTILLAS ──
+// ══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────
+// A. PLANTILLA + IMPORTACIÓN DE CAMPOS (Config. de campos)
+// ─────────────────────────────────────────────────────────────
+
+function downloadSchemaTemplate(){
+  // Build template using SheetJS (loaded via CDN in index.html)
+  if(typeof XLSX==='undefined'){toast('Librería Excel no disponible.','error');return;}
+
+  var wb=XLSX.utils.book_new();
+
+  // ── Hoja 1: Instrucciones ──
+  var instrData=[
+    ['PLANTILLA DE IMPORTACIÓN DE CAMPOS — Unify Management'],
+    [''],
+    ['INSTRUCCIONES DE USO'],
+    ['1. Esta plantilla tiene 4 hojas: Instrucciones, Campos_Codificacion, Campos_Generales y Campos_Hito'],
+    ['2. Complete cada hoja según el tipo de campo que desea crear.'],
+    ['3. NO modifique los encabezados de las columnas (fila 1 de cada hoja de datos).'],
+    ['4. NO modifique el nombre de las hojas.'],
+    ['5. Los campos marcados con * son OBLIGATORIOS.'],
+    ['6. Una vez completada, use el botón "Importar campos" en Config. de campos.'],
+    [''],
+    ['TIPOS DE CAMPO VÁLIDOS (columna field_type):'],
+    ['  text      → Texto libre'],
+    ['  dropdown  → Lista desplegable (complete la columna "opciones" separadas por |)'],
+    ['  number    → Número'],
+    ['  date      → Fecha'],
+    [''],
+    ['NOTAS IMPORTANTES:'],
+    ['  • La columna "key" se genera automáticamente si la deja vacía'],
+    ['  • Para campo de codificación tipo dropdown, use columna "valores_codigo" con formato: VALOR|Etiqueta'],
+    ['  • El orden en codificación determina la posición en el código del entregable'],
+    ['  • Para campos de hito, la columna "nombre_hito" debe coincidir con un hito existente en la plataforma'],
+    [''],
+    ['Proyecto activo: '+((window.APP&&APP.project)?APP.project.name:'—')],
+  ];
+  var wsInstr=XLSX.utils.aoa_to_sheet(instrData);
+  wsInstr['!cols']=[{wch:90}];
+  XLSX.utils.book_append_sheet(wb,wsInstr,'Instrucciones');
+
+  // ── Hoja 2: Campos de Codificación ──
+  var codHeaders=['nombre*','key','field_type*','separador','longitud_max','posicion_codigo*','es_obligatorio','valores_codigo (VALOR|Etiqueta, uno por fila)'];
+  var codExample=['Proyecto','proyecto','dropdown','-','5','1','SI','HRDTRU|Hospital Regional Trujillo'];
+  var wsCod=XLSX.utils.aoa_to_sheet([codHeaders,codExample]);
+  wsCod['!cols']=[{wch:25},{wch:20},{wch:15},{wch:12},{wch:14},{wch:18},{wch:15},{wch:45}];
+  styleHeaderRow(wsCod,codHeaders.length);
+  XLSX.utils.book_append_sheet(wb,wsCod,'Campos_Codificacion');
+
+  // ── Hoja 3: Campos Generales ──
+  var genHeaders=['nombre*','key','field_type*','orden_formulario','placeholder','es_obligatorio','es_visible','opciones (separadas por |)'];
+  var genExample=['Formato de Archivo','formato','dropdown','1','Ej: RVT, IFC, DWG','NO','SI','RVT|IFC|DWG|PDF|DWG'];
+  var wsGen=XLSX.utils.aoa_to_sheet([genHeaders,genExample]);
+  wsGen['!cols']=[{wch:25},{wch:20},{wch:15},{wch:18},{wch:30},{wch:15},{wch:12},{wch:35}];
+  styleHeaderRow(wsGen,genHeaders.length);
+  XLSX.utils.book_append_sheet(wb,wsGen,'Campos_Generales');
+
+  // ── Hoja 4: Campos de Hito ──
+  var hitoHeaders=['nombre_hito*','nombre_campo*','key','field_type*','orden_formulario','placeholder','es_obligatorio','es_visible','opciones (separadas por |)'];
+  var hitoExample=['riba2','LOD','riba2_lod','dropdown','1','','NO','SI','LOD100|LOD200|LOD300|LOD400'];
+  var wsHito=XLSX.utils.aoa_to_sheet([hitoHeaders,hitoExample]);
+  wsHito['!cols']=[{wch:22},{wch:25},{wch:22},{wch:15},{wch:18},{wch:25},{wch:15},{wch:12},{wch:35}];
+  styleHeaderRow(wsHito,hitoHeaders.length);
+  XLSX.utils.book_append_sheet(wb,wsHito,'Campos_Hito');
+
+  XLSX.writeFile(wb,'Plantilla_Campos_'+((APP&&APP.project)?APP.project.code:'Proyecto')+'.xlsx');
+  toast('Plantilla descargada.');
+}
+
+// Helper: style header row with blue background
+function styleHeaderRow(ws,numCols){
+  for(var c=0;c<numCols;c++){
+    var cell=XLSX.utils.encode_cell({r:0,c:c});
+    if(!ws[cell])continue;
+    ws[cell].s={
+      fill:{fgColor:{rgb:'1B3A6B'}},
+      font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10},
+      alignment:{horizontal:'center',vertical:'center'},
+      border:{bottom:{style:'thin',color:{rgb:'FFFFFF'}}}
+    };
+  }
+}
+
+function importSchemasFromExcel(){
+  if(!isAdminLevel()){toast('Sin permiso.','error');return;}
+  // Open file picker
+  var input=document.createElement('input');
+  input.type='file';input.accept='.xlsx,.xls';
+  input.onchange=function(e){
+    var file=e.target.files[0];
+    if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      try{
+        var wb=XLSX.read(ev.target.result,{type:'array'});
+        var result={created:0,errors:[]};
+        var promises=[];
+
+        // Process each data sheet
+        ['Campos_Codificacion','Campos_Generales','Campos_Hito'].forEach(function(sheetName){
+          var ws=wb.Sheets[sheetName];
+          if(!ws)return;
+          var rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+          rows.forEach(function(row,ri){
+            var grp='code';
+            if(sheetName==='Campos_Generales')grp='general';
+            else if(sheetName==='Campos_Hito')grp=(row['nombre_hito*']||row['nombre_hito']||'').trim();
+
+            var nombre=(row['nombre*']||row['nombre']||'').trim();
+            if(!nombre)return;
+            var ftype=(row['field_type*']||row['field_type']||'text').trim().toLowerCase();
+            var baseKey=nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+            var key=(row['key']||'').trim()||baseKey;
+            if(grp!=='code'&&grp!=='general')key=grp+'_'+baseKey;
+
+            // Build opts
+            var optsRaw=(row['opciones (separadas por |)']||row['valores_codigo (VALOR|Etiqueta, uno por fila)']||'').trim();
+            var opts=null;var allowedVals=null;
+            if(optsRaw){
+              if(grp==='code'){
+                allowedVals=optsRaw.split('\n').concat(optsRaw.split('|')).filter(Boolean)
+                  .reduce(function(acc,seg,i,arr){
+                    // Detect VALOR|Etiqueta pairs
+                    if(seg.indexOf('|')>=0){var p=seg.split('|');acc.push({value:p[0].trim(),label:(p[1]||p[0]).trim()});}
+                    else if(i%2===0&&arr[i+1]){/* skip */}
+                    else{acc.push({value:seg.trim(),label:seg.trim()});}
+                    return acc;
+                  },[]);
+                // Simpler: just split by | for code allowed_values
+                allowedVals=optsRaw.split('|').map(function(s){var p=s.split('=');return{value:p[0].trim(),label:(p[1]||p[0]).trim()};}).filter(function(v){return v.value;});
+              }else{
+                opts=JSON.stringify(optsRaw.split('|').map(function(s){return s.trim();}).filter(Boolean));
+              }
+            }
+
+            var isReq=(row['es_obligatorio']||'').toString().toUpperCase()==='SI';
+            var isVis=(row['es_visible']||'SI').toString().toUpperCase()!=='NO';
+
+            var payload={name:nombre,key:key,field_type:ftype,is_required:isReq,
+              field_group:grp,project_id:APP.project.id,is_active:true};
+            if(grp==='code'){
+              payload.is_part_of_code=true;
+              payload.code_order=parseInt(row['posicion_codigo*']||row['posicion_codigo']||99)||99;
+              payload.separator=(row['separador']||'-').trim();
+              payload.max_length=parseInt(row['longitud_max']||10)||10;
+              payload.allowed_values=allowedVals||null;
+              payload.field_order=99;
+            }else{
+              payload.is_part_of_code=false;
+              payload.field_order=parseInt(row['orden_formulario']||99)||99;
+              payload.placeholder=(row['placeholder']||'').trim()||null;
+              payload.is_visible=isVis;
+              payload.options=opts?JSON.parse(opts):null;
+              payload.max_length=255;payload.code_order=99;payload.separator='';
+            }
+            promises.push(sbPost('field_schemas',payload).then(function(){result.created++;}).catch(function(e){result.errors.push(nombre+': '+e.message);}));
+          });
+        });
+
+        Promise.all(promises).then(function(){
+          var msg=result.created+' campo(s) importado(s) correctamente.';
+          if(result.errors.length)msg+=' '+result.errors.length+' error(es): '+result.errors.slice(0,3).join(', ');
+          toast(msg,result.errors.length?'error':'');
+          renderSchemas();
+        });
+      }catch(err){toast('Error al leer el archivo: '+err.message,'error');}
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  input.click();
+}
+
+// ─────────────────────────────────────────────────────────────
+// B. PLANTILLA + IMPORTACIÓN DE ENTREGABLES
+// ─────────────────────────────────────────────────────────────
+
+function downloadDelTemplate(){
+  if(typeof XLSX==='undefined'){toast('Librería Excel no disponible.','error');return;}
+
+  var wb=XLSX.utils.book_new();
+  var codSchemas=codeSchemas();
+  var genSchemas=generalSchemas();
+  var phases=getPhaseGroups();
+
+  // ── Hoja 1: Instrucciones ──
+  var instrLines=[
+    ['PLANTILLA DE IMPORTACIÓN DE ENTREGABLES — Unify Management'],
+    [''],
+    ['INSTRUCCIONES'],
+    ['1. Complete la hoja "Entregables" con los datos de cada entregable a registrar.'],
+    ['2. NO modifique los encabezados (fila 2) ni el orden de las columnas.'],
+    ['3. La fila 3 muestra ejemplos — puede eliminarla antes de importar.'],
+    ['4. Si un código ya existe en la plataforma, la importación se cancelará completamente.'],
+    ['5. Campos marcados con * son OBLIGATORIOS.'],
+    [''],
+    ['COLUMNAS DE CODIFICACIÓN (generan el código automáticamente):'],
+  ];
+  codSchemas.forEach(function(s){
+    instrLines.push(['  '+s.name+' ('+s.key+')'+(s.is_required?' *':'')+
+      (s.allowed_values?' → Valores: '+s.allowed_values.map(function(v){return v.value;}).join(', '):'')]);
+  });
+  instrLines.push(['']);
+  instrLines.push(['CAMPOS GENERALES:']);
+  genSchemas.forEach(function(s){instrLines.push(['  '+s.name+' ('+s.key+')'+(s.is_required?' *':'')]);});
+  instrLines.push(['']);
+  instrLines.push(['CAMPOS DE HITO:']);
+  phases.forEach(function(ph){
+    var phs=phaseSchemas(ph.key);
+    if(phs.length)instrLines.push(['  '+ph.label+': '+phs.map(function(s){return s.name.replace(ph.label+' - ','');}).join(', ')]);
+  });
+  instrLines.push(['']);
+  instrLines.push(['Proyecto: '+((APP&&APP.project)?APP.project.name+' ('+APP.project.code+')':'—')]);
+  instrLines.push(['Generado: '+new Date().toLocaleString('es-PE')]);
+
+  var wsInstr=XLSX.utils.aoa_to_sheet(instrLines);
+  wsInstr['!cols']=[{wch:100}];
+  XLSX.utils.book_append_sheet(wb,wsInstr,'Instrucciones');
+
+  // ── Hoja 2: Entregables ──
+  // Build headers:
+  // Row 1: group labels
+  // Row 2: field keys (used for import)
+  // Row 3: field names (human readable)
+  // Row 4: example data
+  var grpRow1=['CODIFICACIÓN'];
+  var grpRow2=['codigo_generado'];
+  var grpRow3=['Código (auto)'];
+  var exRow=[''];
+  codSchemas.forEach(function(s){
+    grpRow1.push('CODIFICACIÓN');
+    grpRow2.push(s.key);
+    grpRow3.push(s.name+(s.is_required?' *':''));
+    exRow.push(s.allowed_values?s.allowed_values[0].value:'EJEMPLO');
+  });
+  grpRow1.push('GENERAL','GENERAL','GENERAL','GENERAL','GENERAL');
+  grpRow2.push('nombre','estado','paquete','grupo','unidades_productivas');
+  grpRow3.push('Nombre / Título *','Estado','Paquete','Grupo','Unidades Productivas');
+  exRow.push('Plano de distribución arquitectónica','pending','PKG-ARQ-01','GRP-ARQ','1');
+  grpRow1.push('GENERAL','GENERAL','GENERAL');
+  grpRow2.push('descripcion','formato','url');
+  grpRow3.push('Descripción','Formato','Hipervínculo (URL)');
+  exRow.push('','RVT','https://acc.autodesk.com/...');
+  genSchemas.filter(function(s){return ['nombre','estado','paquete','grupo','descripcion','formato','url'].indexOf(s.key)<0;}).forEach(function(s){
+    grpRow1.push('GENERAL');grpRow2.push(s.key);grpRow3.push(s.name+(s.is_required?' *':''));exRow.push('');
+  });
+  phases.forEach(function(ph){
+    phaseSchemas(ph.key).forEach(function(s){
+      grpRow1.push(ph.label);
+      grpRow2.push(s.key);
+      grpRow3.push(s.name.replace(ph.label+' - ',''));
+      exRow.push('');
+    });
+  });
+
+  var wsData=XLSX.utils.aoa_to_sheet([grpRow1,grpRow2,grpRow3,exRow]);
+  // Style row 1 (group labels)
+  styleHeaderRow(wsData,grpRow1.length);
+  // Style row 2 (keys) — light blue
+  for(var c=0;c<grpRow2.length;c++){
+    var cell2=XLSX.utils.encode_cell({r:1,c:c});
+    if(!wsData[cell2])continue;
+    wsData[cell2].s={fill:{fgColor:{rgb:'EBF5FB'}},font:{bold:true,color:{rgb:'1B3A6B'},sz:9}};
+  }
+  wsData['!cols']=grpRow1.map(function(){return {wch:22};});
+  wsData['!freeze']={xSplit:0,ySplit:3};
+  XLSX.utils.book_append_sheet(wb,wsData,'Entregables');
+
+  XLSX.writeFile(wb,'Plantilla_Entregables_'+((APP&&APP.project)?APP.project.code:'Proyecto')+'.xlsx');
+  toast('Plantilla descargada.');
+}
+
+function importDeliverables(){
+  if(!can('can_create_deliverables')){toast('Sin permiso.','error');return;}
+  var input=document.createElement('input');
+  input.type='file';input.accept='.xlsx,.xls';
+  input.onchange=function(e){
+    var file=e.target.files[0];
+    if(!file)return;
+    var reader=new FileReader();
+    reader.onload=function(ev){
+      try{
+        var wb=XLSX.read(ev.target.result,{type:'array'});
+        var ws=wb.Sheets['Entregables'];
+        if(!ws){toast('No se encontró la hoja "Entregables".','error');return;}
+
+        // Row 0 = group labels, Row 1 = keys (for mapping), Row 2 = names (skip), Row 3+ = data
+        var allRows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        if(allRows.length<4){toast('La plantilla no tiene datos para importar.','error');return;}
+
+        var keyRow=allRows[1]; // field keys
+        var dataRows=allRows.slice(3).filter(function(r){return r.some(function(c){return c!=='';});});
+        if(!dataRows.length){toast('No hay entregables para importar.','error');return;}
+
+        // Show preview modal
+        showImportPreview(keyRow,dataRows);
+      }catch(err){toast('Error al leer el archivo: '+err.message,'error');}
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  input.click();
+}
+
+function showImportPreview(keyRow,dataRows){
+  var overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='import-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:640px">'+
+    '<div class="modal-header">'+
+    '<div><div class="modal-title">Importar entregables</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+dataRows.length+' entregable(s) detectado(s) en el archivo</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="imp-close">X</button></div>'+
+    '<div class="modal-body">'+
+    '<div id="import-status" style="margin-bottom:10px">'+
+    '<div style="font-size:12px;color:var(--text2)">Verificando códigos duplicados...</div>'+
+    '</div>'+
+    '<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">'+
+    '<table class="tbl"><thead><tr>'+
+    '<th style="font-size:10px">#</th>'+
+    '<th style="font-size:10px">Código</th>'+
+    '<th style="font-size:10px">Nombre</th>'+
+    '<th style="font-size:10px">Estado</th>'+
+    '</tr></thead><tbody id="import-rows">'+
+    dataRows.map(function(r,i){
+      var code=r[0]||'—';
+      var nameIdx=keyRow.indexOf('nombre');
+      var name=nameIdx>=0?r[nameIdx]||'—':'—';
+      return '<tr><td style="font-size:10px">'+(i+1)+'</td>'+
+        '<td><span class="code-chip" style="font-size:9px">'+code+'</span></td>'+
+        '<td style="font-size:11px">'+name+'</td>'+
+        '<td id="imp-status-'+i+'"><span style="font-size:10px;color:var(--text3)">⏳</span></td>'+
+        '</tr>';
+    }).join('')+
+    '</tbody></table></div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="imp-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="imp-confirm" disabled>Importar</button>'+
+    '</div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  overlay.querySelector('#imp-close').onclick=function(){overlay.remove();};
+  overlay.querySelector('#imp-cancel').onclick=function(){overlay.remove();};
+
+  // Verify for duplicates
+  var codes=dataRows.map(function(r){return (r[0]||'').trim();}).filter(Boolean);
+  sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&select=code')
+    .then(function(existing){
+      var existingCodes=existing.map(function(d){return d.code;});
+      var hasDupes=false;
+      dataRows.forEach(function(r,i){
+        var code=(r[0]||'').trim();
+        var el=document.getElementById('imp-status-'+i);
+        if(!el)return;
+        if(!code){el.innerHTML='<span style="font-size:10px;color:var(--amber)">⚠ Sin código</span>';hasDupes=true;}
+        else if(existingCodes.indexOf(code)>=0){el.innerHTML='<span style="font-size:10px;color:var(--red)">✗ Duplicado</span>';hasDupes=true;}
+        else{el.innerHTML='<span style="font-size:10px;color:var(--green)">✓ OK</span>';}
+      });
+      var statusEl=document.getElementById('import-status');
+      var confirmBtn=document.getElementById('imp-confirm');
+      if(hasDupes){
+        statusEl.innerHTML='<div style="background:var(--red-light);border:1px solid var(--red);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--red)">'+
+          '✗ No se puede importar: existen códigos duplicados o faltantes. Corrija el archivo e intente nuevamente.</div>';
+        confirmBtn.disabled=true;
+      }else{
+        statusEl.innerHTML='<div style="background:var(--green-light);border:1px solid var(--green);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--green)">'+
+          '✓ Todos los códigos son únicos. Listo para importar.</div>';
+        confirmBtn.disabled=false;
+        confirmBtn.onclick=function(){executeImport(keyRow,dataRows,overlay);};
+      }
+    }).catch(function(e){
+      document.getElementById('import-status').innerHTML='<div style="color:var(--red);font-size:12px">Error verificando: '+e.message+'</div>';
+    });
+}
+
+function executeImport(keyRow,dataRows,overlay){
+  var btn=overlay.querySelector('#imp-confirm');
+  btn.disabled=true;btn.textContent='Importando...';
+  var codSchemas=codeSchemas();var genSchemas=generalSchemas();var phases=getPhaseGroups();
+  var GEN_MAP={nombre:'name',descripcion:'description',paquete:'work_package',formato:'file_format',url:'url',estado:'status'};
+  var promises=dataRows.map(function(r){
+    var fieldValues={};var payload={project_id:APP.project.id,is_active:true,status:'pending',created_by:APP.user.id};
+    keyRow.forEach(function(key,ci){
+      if(!key||key==='codigo_generado')return;
+      var val=(r[ci]!==undefined&&r[ci]!=='')?String(r[ci]).trim():'';
+      if(!val)return;
+      // Code fields → field_values
+      if(codSchemas.find(function(s){return s.key===key;})){fieldValues[key]=val;return;}
+      // Known mapped cols
+      var col=GEN_MAP[key];
+      if(col){payload[col]=val;return;}
+      // General schemas → direct map or field_values
+      if(genSchemas.find(function(s){return s.key===key;})){fieldValues[key]=val;return;}
+      // Phase fields
+      var isKnownPhaseField=false;
+      phases.forEach(function(ph){
+        if(phaseSchemas(ph.key).find(function(s){return s.key===key;})){
+          if(isKnownPhase(ph.key)){payload[key]=val;}
+          else{var fvKey=ph.key+'__'+(key.indexOf(ph.key+'_')===0?key.slice(ph.key.length+1):key);fieldValues[fvKey]=val;}
+          isKnownPhaseField=true;
+        }
+      });
+      if(!isKnownPhaseField)fieldValues[key]=val;
+    });
+    // Build code from field_values
+    var code=buildCode(fieldValues);
+    if(!code)code=r[0]||'';
+    if(!code)return Promise.resolve();
+    payload.code=code;
+    payload.field_values=fieldValues;
+    if(!payload.name)payload.name=code;
+    // UP
+    var upIdx=keyRow.indexOf('unidades_productivas');
+    var up=upIdx>=0&&r[upIdx]?parseFloat(r[upIdx])||1:1;
+    return sbPost('deliverables',payload).then(function(saved){
+      var delId=Array.isArray(saved)?saved[0].id:saved.id;
+      return sbPost('production_units',{deliverable_id:delId,planned_qty:up,consumed_qty:0,unit_label:'UP'});
+    });
+  });
+  Promise.all(promises.filter(Boolean)).then(function(){
+    toast(dataRows.length+' entregable(s) importado(s).');
+    overlay.remove();
+    loadDeliverables();
+  }).catch(function(e){
+    toast('Error en importación: '+e.message,'error');
+    btn.disabled=false;btn.textContent='Importar';
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// C. EXPORTAR CONTROL DE AVANCE A PDF
+// ─────────────────────────────────────────────────────────────
+
+function exportProgressPDF(){
+  var allDels=window._progressAllDels;
+  var prod=window._progressProd;
+  if(!allDels){toast('Carga el Control de avance antes de exportar.','error');return;}
+
+  // Apply current filters
+  var disc=document.getElementById('pf-disc')?document.getElementById('pf-disc').value:'';
+  var pkg=document.getElementById('pf-pkg')?document.getElementById('pf-pkg').value:'';
+  var phase=document.getElementById('pf-phase')?document.getElementById('pf-phase').value:'';
+  var deliverables=allDels.filter(function(d){
+    var _discKey=getProgressConfig().discField||'disciplina';
+    if(disc&&((d.field_values&&d.field_values[_discKey])||d[_discKey]||'')!==disc)return false;
+    if(pkg&&d.work_package!==pkg)return false;
+    if(phase){
+      var projPh=(APP.phases||[]).find(function(p){return p.id===phase;});
+      if(projPh){var hasPhase=(getDelFieldVal(d,projPh.field_key))===projPh.field_value;if(!hasPhase)return false;}
+      else{var hasPhaseDate=isKnownPhase(phase)?!!d[phase+'_delivery_date']:!!(d.field_values&&d.field_values[phase+'__delivery_date']);if(!hasPhaseDate)return false;}
+    }
+    return true;
+  });
+
+  // Build prodMap
+  var prodMap={};
+  (prod||[]).forEach(function(p){
+    if(!prodMap[p.deliverable_id])prodMap[p.deliverable_id]={plan:0,pct:0,consUP:0};
+    var w=Number(p.planned_qty)||0;var pct=Math.min(100,Math.max(0,Number(p.consumed_qty)||0));
+    prodMap[p.deliverable_id]={plan:w,pct:pct,consUP:Math.round(pct/100*w*10)/10};
+  });
+
+  var totalUP=0,totalConsUP=0;
+  deliverables.forEach(function(d){var p=prodMap[d.id]||{plan:0,consUP:0};totalUP+=p.plan;totalConsUP+=p.consUP||0;});
+  var pctGen=totalUP>0?Math.round(totalConsUP/totalUP*100):0;
+  var completedDels=deliverables.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
+
+  var now=new Date();
+  var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+  var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  var userName=APP.user?APP.user.full_name:'—';
+
+  // Build phase stats
+  var configuredPhases=getProjectPhases();
+  var phaseRows='';
+  configuredPhases.forEach(function(ph){
+    var phDels=deliverables.filter(function(d){return getDelFieldVal(d,ph.field_key)===ph.field_value;});
+    var phTotalUP=0,phConsUP=0;
+    phDels.forEach(function(d){var p=prodMap[d.id]||{plan:0,consUP:0};phTotalUP+=p.plan;phConsUP+=(p.consUP||0);});
+    var phPct=phTotalUP>0?Math.round(phConsUP/phTotalUP*100):0;
+    var bar='<div style="background:#e2e8f0;border-radius:4px;height:8px;width:120px;display:inline-block;vertical-align:middle"><div style="background:'+ph.color+';height:8px;border-radius:4px;width:'+phPct+'%"></div></div>';
+    phaseRows+='<tr><td style="padding:6px 10px;font-size:11px;font-weight:600">'+ph.name+(ph.sub_label?'<div style="font-size:9px;color:#64748b">'+ph.sub_label+'</div>':'')+'</td>'+
+      '<td style="padding:6px 10px;text-align:center;font-size:11px">'+phDels.length+'</td>'+
+      '<td style="padding:6px 10px;text-align:center;font-size:11px">'+phTotalUP+'</td>'+
+      '<td style="padding:6px 10px;text-align:center;font-size:11px">'+Math.round(phConsUP*10)/10+'</td>'+
+      '<td style="padding:6px 10px"><div style="display:flex;align-items:center;gap:8px">'+bar+
+      '<span style="font-size:11px;font-weight:700;color:'+(phPct>=80?'#16a34a':phPct>=50?'#2563eb':'#d97706')+'">'+phPct+'%</span></div></td></tr>';
+  });
+
+  // Build deliverable table rows
+  var delRows=deliverables.map(function(d){
+    var p=prodMap[d.id]||{plan:0,pct:0,consUP:0};
+    var pct=Math.min(100,Math.round(p.pct||0));
+    var discKey=getProgressConfig().discField||'disciplina';
+    var disc2=(d.field_values&&d.field_values[discKey])||d[discKey]||'—';
+    var bar='<div style="background:#e2e8f0;border-radius:3px;height:6px;width:80px;display:inline-block;vertical-align:middle"><div style="background:'+(pct>=80?'#16a34a':pct>=50?'#2563eb':'#d97706')+';height:6px;border-radius:3px;width:'+pct+'%"></div></div>';
+    var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
+    return '<tr><td style="padding:5px 8px;font-size:9px;font-family:monospace">'+d.code+'</td>'+
+      '<td style="padding:5px 8px;font-size:10px;max-width:200px">'+d.name+'</td>'+
+      '<td style="padding:5px 8px;font-size:10px;text-align:center">'+disc2+'</td>'+
+      '<td style="padding:5px 8px;font-size:10px;text-align:center;font-weight:700">'+p.plan+'</td>'+
+      '<td style="padding:5px 8px"><div style="display:flex;align-items:center;gap:6px">'+bar+
+      '<span style="font-size:10px;font-weight:700">'+pct+'%</span></div></td>'+
+      '<td style="padding:5px 8px;font-size:10px;text-align:center">'+(STATUS_LABELS[d.status]||d.status)+'</td></tr>';
+  }).join('');
+
+  var filterLabel='';
+  if(disc||pkg||phase)filterLabel='<div style="font-size:10px;color:#64748b;margin-bottom:8px">Filtros aplicados: '+(disc?'Disciplina: '+disc+' ':'')+(pkg?'Paquete: '+pkg+' ':'')+(phase?'Fase: '+phase:'')+'</div>';
+
+  // Build HTML for print
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+    '<title>Control de Avance — '+APP.project.name+'</title>'+
+    '<style>'+
+    'body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#1e293b;font-size:12px}'+
+    'h1{color:#1B3A6B;font-size:18px;margin:0 0 4px}'+
+    'h2{color:#2E86C1;font-size:13px;margin:16px 0 8px;border-bottom:2px solid #2E86C1;padding-bottom:4px}'+
+    '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #1B3A6B}'+
+    '.meta{font-size:10px;color:#64748b;text-align:right}'+
+    '.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}'+
+    '.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:12px;text-align:center}'+
+    '.kpi-val{font-size:22px;font-weight:700;color:#1B3A6B}'+
+    '.kpi-lbl{font-size:10px;color:#64748b;margin-top:2px}'+
+    'table{width:100%;border-collapse:collapse;margin-bottom:16px}'+
+    'th{background:#1B3A6B;color:#fff;padding:7px 10px;font-size:10px;text-align:left;font-weight:600}'+
+    'tr:nth-child(even){background:#f8fafc}'+
+    '@media print{body{padding:10px}.no-print{display:none}}'+
+    '</style></head><body>'+
+    '<div class="header">'+
+    '<div>'+
+    '<h1>Control de Avance</h1>'+
+    '<div style="font-size:13px;color:#2E86C1;font-weight:600">'+APP.project.name+'</div>'+
+    (APP.project.code?'<div style="font-size:10px;color:#64748b">Código: '+APP.project.code+'</div>':'')+
+    '</div>'+
+    '<div class="meta">'+
+    '<div>Fecha: <strong>'+dateStr+'</strong></div>'+
+    '<div>Hora: <strong>'+timeStr+'</strong></div>'+
+    '<div>Exportado por: <strong>'+userName+'</strong></div>'+
+    '</div></div>'+
+    filterLabel+
+    '<div class="kpi-grid">'+
+    '<div class="kpi"><div class="kpi-val">'+deliverables.length+'</div><div class="kpi-lbl">Entregables</div></div>'+
+    '<div class="kpi"><div class="kpi-val">'+completedDels+'</div><div class="kpi-lbl">Completados</div></div>'+
+    '<div class="kpi"><div class="kpi-val">'+totalUP+'</div><div class="kpi-lbl">UP Planificadas</div></div>'+
+    '<div class="kpi"><div class="kpi-val" style="color:'+(pctGen>=80?'#16a34a':pctGen>=50?'#2563eb':'#d97706')+'">'+pctGen+'%</div><div class="kpi-lbl">Avance ponderado</div></div>'+
+    '</div>'+
+    (phaseRows?
+      '<h2>Avance por Fase</h2>'+
+      '<table><thead><tr><th>Fase</th><th style="text-align:center">Entregables</th><th style="text-align:center">UP Plan.</th><th style="text-align:center">UP Cons.</th><th>Avance</th></tr></thead>'+
+      '<tbody>'+phaseRows+'</tbody></table>':'')+
+    '<h2>Detalle de Entregables</h2>'+
+    '<table><thead><tr><th>Código</th><th>Nombre</th><th style="text-align:center">Disciplina</th><th style="text-align:center">Peso UP</th><th>Avance</th><th style="text-align:center">Estado</th></tr></thead>'+
+    '<tbody>'+delRows+'</tbody></table>'+
+    '<div style="font-size:9px;color:#94a3b8;margin-top:16px;padding-top:8px;border-top:1px solid #e2e8f0;text-align:center">'+
+    'Unify Management · '+APP.project.name+' · Informe generado el '+dateStr+' a las '+timeStr+' por '+userName+
+    '</div></body></html>';
+
+  // Open in new window and trigger print
+  var win=window.open('','_blank','width=900,height=700');
+  if(!win){toast('Permite ventanas emergentes para exportar PDF.','error');return;}
+  win.document.write(html);
+  win.document.close();
+  win.onload=function(){
+    win.focus();
+    setTimeout(function(){win.print();},500);
+  };
+  toast('PDF listo para imprimir / guardar.');
 }

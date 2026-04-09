@@ -1498,9 +1498,10 @@ function renderProgressContent(deliverables,prod){
       // Overdue: check date_field_key
       var overdue=0;
       if(ph.date_field_key){
+        var dk2=ph.date_field_key;
         overdue=phDels.filter(function(d){
-          var dateVal=isKnownPhase(ph.date_field_key.replace(/_delivery_date$/,''))?d[ph.date_field_key]:
-            (d.field_values&&d.field_values[ph.date_field_key])||d[ph.date_field_key]||null;
+          var dateVal=d[dk2]||(d.field_values&&d.field_values[dk2])||
+            (d.field_values&&d.field_values[dk2.replace(/_delivery_date$/,'__delivery_date')])||'';
           return dateVal&&new Date(dateVal)<new Date()&&d.status!=='approved'&&d.status!=='issued';
         }).length;
       }
@@ -1604,15 +1605,27 @@ function renderProgressContent(deliverables,prod){
       var phaseDates=phaseStats.map(function(ps){
         var dt='';
         var ph=ps.ph;
-        // Find date for this deliverable in this phase
         var projPh=(APP.phases||[]).find(function(p){return p.id===ph.key;});
         if(projPh&&projPh.date_field_key){
-          // Use the configured date field
-          dt=isKnownPhase(projPh.date_field_key.replace(/_delivery_date$/,''))?
-            d[projPh.date_field_key]||'':
-            (d.field_values&&d.field_values[projPh.date_field_key])||d[projPh.date_field_key]||'';
+          var dk=projPh.date_field_key;
+          // Try ALL possible locations in order of priority:
+          // 1. Direct DB column (riba2_delivery_date, etc.)
+          // 2. field_values JSONB (custom hito schema with double underscore key)
+          // 3. field_values JSONB (direct key match)
+          // 4. Any field_values key that ends with the configured key
+          dt=d[dk]||
+             (d.field_values&&d.field_values[dk])||
+             (d.field_values&&d.field_values[dk.replace(/_delivery_date$/,'__delivery_date')])||
+             '';
+          // Also try stripping group prefix if key is like 'hito_01_delivery_date'
+          if(!dt&&d.field_values){
+            var fv=d.field_values;
+            // Try finding key in field_values by partial match
+            Object.keys(fv).forEach(function(k){
+              if(!dt&&(k===dk||k.replace(/^[^_]+__/,'')+''===dk||k.endsWith('__'+dk)))dt=fv[k]||'';
+            });
+          }
         }else if(!projPh){
-          // Schema-based phase
           dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']||'':
             (d.field_values&&d.field_values[ph.key+'__delivery_date'])||'';
         }

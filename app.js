@@ -526,9 +526,12 @@ function loadDeliverables(){
 
     var prodMap={};
     prod.forEach(function(p){
-      if(!prodMap[p.deliverable_id])prodMap[p.deliverable_id]={plan:0,cons:0};
-      prodMap[p.deliverable_id].plan+=Number(p.planned_qty);
-      prodMap[p.deliverable_id].cons+=Number(p.consumed_qty);
+      if(!prodMap[p.deliverable_id])prodMap[p.deliverable_id]={plan:0,pct:0,consUP:0};
+      var w=Number(p.planned_qty)||0;
+      var pct=Math.min(100,Math.max(0,Number(p.consumed_qty)||0));
+      prodMap[p.deliverable_id].plan+=w;
+      prodMap[p.deliverable_id].pct=pct;
+      prodMap[p.deliverable_id].consUP=Math.round(pct/100*w*10)/10;
     });
     var canEdit=can('can_edit_deliverables');
     var canDel=can('can_delete_deliverables');
@@ -615,7 +618,8 @@ function loadDeliverables(){
           var vis=visiblePhaseSchemas(ph.key);
           if(!vis.length)return '';
           return vis.map(function(s,i){
-            var val=d[s.key]||'';
+            // Use getFieldVal to correctly handle both known phases (DB cols) and custom hitos (JSONB)
+            var val=getFieldVal(d,s);
             var isDate=s.field_type==='date';
             var isOverdue=isDate&&val&&new Date(val)<new Date()&&d.status!=='approved'&&d.status!=='issued';
             var display=isDate?fmtDateShort(val):(val||'--');
@@ -1366,12 +1370,17 @@ function renderProgress(){
   window._progressAllDels=null;window._progressProd=null;
   Promise.all([
     sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc'),
-    sbGet('production_units','?select=*').catch(function(){return[];})
   ]).then(function(res){
-    window._progressAllDels=res[0];
-    window._progressProd=res[1];
+    var dels=res[0];
+    window._progressAllDels=dels;
+    // Load production_units scoped to this project's deliverables
+    if(!dels||!dels.length){window._progressProd=[];applyProgressFilters();return;}
+    var ids=dels.map(function(d){return d.id;});
+    sbGet('production_units','?deliverable_id=in.('+ids.join(',')+')'+'&select=*').catch(function(){return[];})
+    .then(function(prod){
+      window._progressProd=prod;
     var discs=[];
-    res[0].forEach(function(d){
+    dels.forEach(function(d){
       var disc=(d.field_values&&d.field_values.disciplina)||'';
       if(disc&&discs.indexOf(disc)<0)discs.push(disc);
     });
@@ -1381,7 +1390,8 @@ function renderProgress(){
       discSel.innerHTML='<option value="">Todas</option>';
       discs.forEach(function(d){var o=document.createElement('option');o.value=d;o.textContent=d;discSel.appendChild(o);});
     }
-    applyProgressFilters();
+      applyProgressFilters();
+    });
   }).catch(function(e){
     var pce=document.getElementById('progress-content');
     if(pce)pce.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
@@ -1404,7 +1414,12 @@ function applyProgressFilters(){
   var deliverables=allDels.filter(function(d){
     if(disc&&(d.field_values&&d.field_values.disciplina)!==disc)return false;
     if(pkg&&d.work_package!==pkg)return false;
-    if(phase&&!d[phase+'_delivery_date'])return false;
+    if(phase){
+      var hasPhaseDate=isKnownPhase(phase)
+        ?!!d[phase+'_delivery_date']
+        :!!(d.field_values&&d.field_values[phase+'__delivery_date']);
+      if(!hasPhaseDate)return false;
+    }
     return true;
   });
   renderProgressContent(deliverables,window._progressProd||[]);
@@ -1415,47 +1430,72 @@ function renderProgressContent(deliverables,prod){
   if(!el)return;
   var prodMap={};
   prod.forEach(function(p){
-    if(!prodMap[p.deliverable_id])prodMap[p.deliverable_id]={plan:0,cons:0};
-    prodMap[p.deliverable_id].plan+=Number(p.planned_qty);
-    prodMap[p.deliverable_id].cons+=Number(p.consumed_qty);
+    if(!prodMap[p.deliverable_id])prodMap[p.deliverable_id]={plan:0,pct:0};
+    // plan = weight (UP), pct = % avance (0-100), consUP = units consumed
+    var w=Number(p.planned_qty)||0;
+    var pct=Math.min(100,Math.max(0,Number(p.consumed_qty)||0));
+    prodMap[p.deliverable_id].plan+=w;
+    prodMap[p.deliverable_id].pct=pct; // last registered pct
+    prodMap[p.deliverable_id].consUP=Math.round(pct/100*w*10)/10; // UP consumed
   });
-  var totalPlan=0,totalCons=0;
-  deliverables.forEach(function(d){var p=prodMap[d.id]||{plan:0,cons:0};totalPlan+=p.plan;totalCons+=p.cons;});
-  var pctGen=totalPlan>0?Math.round(totalCons/totalPlan*100):0;
+  var totalUP=0,totalConsUP=0;
+  deliverables.forEach(function(d){
+    var p=prodMap[d.id]||{plan:0,pct:0,consUP:0};
+    totalUP+=p.plan;
+    totalConsUP+=p.consUP||0;
+  });
+  // Weighted global progress: sum(pct_i * weight_i) / sum(weight_i)
+  var pctGen=totalUP>0?Math.round(totalConsUP/totalUP*100):0;
   var totalDels=deliverables.length;
   var completedDels=deliverables.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
   var canProg=can('can_register_progress');
   var byDisc={};
   deliverables.forEach(function(d){
     var disc=(d.field_values&&d.field_values.disciplina)||'--';
-    if(!byDisc[disc])byDisc[disc]={plan:0,cons:0,total:0,comp:0};
-    var p=prodMap[d.id]||{plan:0,cons:0};
-    byDisc[disc].plan+=p.plan;byDisc[disc].cons+=p.cons;byDisc[disc].total++;
+    if(!byDisc[disc])byDisc[disc]={plan:0,consUP:0,total:0,comp:0};
+    var p=prodMap[d.id]||{plan:0,pct:0,consUP:0};
+    byDisc[disc].plan+=p.plan;
+    byDisc[disc].consUP+=(p.consUP||0);
+    byDisc[disc].total++;
     if(d.status==='approved'||d.status==='issued')byDisc[disc].comp++;
   });
   var phaseStats=getPhaseGroups().map(function(ph){
-    var withDate=deliverables.filter(function(d){return !!d[ph.key+'_delivery_date'];}).length;
-    var comp=deliverables.filter(function(d){return d[ph.key+'_delivery_date']&&(d.status==='approved'||d.status==='issued');}).length;
-    var overdue=deliverables.filter(function(d){
-      return d[ph.key+'_delivery_date']&&new Date(d[ph.key+'_delivery_date'])<new Date()&&d.status!=='approved'&&d.status!=='issued';
+    var phDels=deliverables.filter(function(d){
+      // For known phases use direct column; custom hito field_values
+      var dateVal=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:
+        (d.field_values&&d.field_values[ph.key+'__delivery_date']);
+      return !!dateVal;
+    });
+    // Weighted progress for this phase
+    var phTotalUP=0,phConsUP=0;
+    phDels.forEach(function(d){
+      var p=prodMap[d.id]||{plan:0,consUP:0};
+      phTotalUP+=p.plan;phConsUP+=(p.consUP||0);
+    });
+    var phPct=phTotalUP>0?Math.round(phConsUP/phTotalUP*100):0;
+    var comp=phDels.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
+    var overdue=phDels.filter(function(d){
+      var dateVal=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:
+        (d.field_values&&d.field_values[ph.key+'__delivery_date']);
+      return dateVal&&new Date(dateVal)<new Date()&&d.status!=='approved'&&d.status!=='issued';
     }).length;
-    return {ph:ph,withDate:withDate,comp:comp,overdue:overdue};
+    return {ph:ph,withDate:phDels.length,comp:comp,overdue:overdue,pct:phPct,totalUP:phTotalUP,consUP:phConsUP};
   });
   var html=
     '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'+
     kpiCard('Entregables','var(--brand-light)','var(--brand)',totalDels,'registrados')+
     kpiCard('Completados','var(--green-light)','var(--green)',completedDels,(totalDels?Math.round(completedDels/totalDels*100):0)+'%')+
-    kpiCard('Unid. planificadas','#eff6ff','var(--brand)',totalPlan,'unidades')+
-    kpiCard('Avance promedio','var(--green-light)','var(--green)',(totalDels>0?Math.round(deliverables.reduce(function(a,d){var p=prodMap[d.id]||{cons:0};return a+Math.min(100,p.cons);},0)/totalDels):0)+'%','ponderado por entregable')+
+    kpiCard('UP Planificadas','#eff6ff','var(--brand)',totalUP,'unidades productivas')+
+    kpiCard('Avance ponderado','var(--green-light)','var(--green)',pctGen+'%','weighted por UP')+
     '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+
     phaseStats.map(function(ps){
       var pct=ps.withDate>0?Math.round(ps.comp/ps.withDate*100):0;
       return '<div class="card" style="padding:14px;border-top:3px solid '+ps.ph.color+'">'+
         '<div style="font-size:10px;font-weight:700;color:'+ps.ph.color+';text-transform:uppercase;margin-bottom:8px">'+ps.ph.label+(ps.ph.sub?' · '+ps.ph.sub:'')+'</div>'+
-        '<div style="font-size:26px;font-weight:700;font-family:\'Space Grotesk\',sans-serif;color:var(--text)">'+pct+'%</div>'+
-        '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+ps.comp+' de '+ps.withDate+' completados</div>'+
-        '<div class="prog-track" style="margin-top:8px"><div class="prog-fill" style="width:'+pct+'%;background:'+ps.ph.color+'"></div></div>'+
+        '<div style="font-size:26px;font-weight:700;font-family:\'Space Grotesk\',sans-serif;color:var(--text)">'+ps.pct+'%</div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+(Math.round((ps.consUP||0)*10)/10)+' / '+ps.totalUP+' UP · '+ps.comp+' completados</div>'+
+        '<div class="prog-track" style="margin-top:8px"><div class="prog-fill" style="width:'+ps.pct+'%;background:'+ps.ph.color+'"></div></div>'+
         (ps.overdue>0?'<div style="font-size:9px;color:var(--red);margin-top:6px;font-weight:600">'+ps.overdue+' vencido(s) ⚠</div>':
         '<div style="font-size:9px;color:var(--green);margin-top:6px">Al día</div>')+
         '</div>';
@@ -1465,7 +1505,7 @@ function renderProgressContent(deliverables,prod){
     '<div class="card" style="padding:18px">'+
     '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">Avance por disciplina</div>'+
     (Object.keys(byDisc).length?Object.entries(byDisc).map(function(e){
-      var pct=e[1].plan>0?Math.round(e[1].cons/e[1].plan*100):0;
+      var pct=e[1].plan>0?Math.round((e[1].consUP||0)/e[1].plan*100):0;
       return '<div class="prog-row">'+
         '<div class="prog-label" style="font-size:10px;font-weight:600">'+e[0]+'</div>'+
         '<div class="prog-bar-wrap"><div class="prog-track"><div class="prog-fill" style="width:'+pct+'%;background:'+progColor(pct)+'"></div></div>'+
@@ -1494,10 +1534,13 @@ function renderProgressContent(deliverables,prod){
     deliverables.map(function(d){
       var p=prodMap[d.id]||{plan:0,cons:0};
       var weight=p.plan||0;
-      var pct=Math.min(100,Math.max(0,Math.round(p.cons)));
+      var pct=Math.min(100,Math.max(0,Math.round(p.pct||0)));
       var today=new Date();
       var phaseDates=getPhaseGroups().map(function(ph){
-        var dt=d[ph.key+'_delivery_date'];
+        // known phases: direct column; custom hitos: field_values JSONB
+        var dt=isKnownPhase(ph.key)
+          ?d[ph.key+'_delivery_date']
+          :(d.field_values&&d.field_values[ph.key+'__delivery_date'])||null;
         if(!dt)return '<td style="font-size:10px;color:var(--text3)">--</td>';
         var overdue=new Date(dt)<today&&d.status!=='approved'&&d.status!=='issued';
         return '<td style="font-size:10px;'+(overdue?'color:var(--red);font-weight:600':'color:var(--text2)')+'">'+fmtDateShort(dt)+(overdue?' ⚠':'')+'</td>';
@@ -1506,11 +1549,9 @@ function renderProgressContent(deliverables,prod){
         '<td><span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
         '<div style="font-size:9px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</div></td>'+
         '<td><span class="badge b-progress" style="font-size:9px">'+((d.field_values&&d.field_values.disciplina)||'--')+'</span></td>'+
-        '<td style="font-weight:600;text-align:center">'+p.plan+'</td>'+
-        '<td style="font-weight:600;color:'+progColor(pct)+';text-align:center">'+p.cons+'</td>'+
+        '<td style="text-align:center;color:var(--brand)"><div style="font-weight:700">'+p.plan+'</div><div style="font-size:9px;color:var(--text3)">'+Math.round((p.consUP||0)*10)/10+' UP</div></td>'+
         '<td><div style="display:flex;align-items:center;gap:5px">'+
-        '<div class="prog-track" style="width:50px"><div class="prog-fill" style="width:'+pct+'%;background:'+progColor(pct)+'"></div></div>'+
-        '<span style="font-size:10px;color:var(--text3)">'+pct+'%</span></div></td>'+
+        '<span style="font-size:10px;font-weight:700;color:'+progColor(pct)+'">'+pct+'%</span></div></td>'+
         phaseDates+
         '<td>'+statusBadge(d.status)+'</td>'+
         (canProg?'<td><button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="openProgressModal(\''+d.id+'\',\''+d.code+'\','+weight+','+pct+')">Registrar</button></td>':'')+
@@ -1761,7 +1802,7 @@ function saveSchema(id,grp){
     var existing=APP.schemas.filter(function(s){return s.key===key;});
     if(existing.length>0)key=key+'_'+Date.now().toString().slice(-4);
   }
-  var payload={name:name,field_type:type,is_required:!!(document.getElementById('sch-req')&&document.getElementById('sch-req').checked),field_group:grp,project_id:APP.project.id};
+  var payload={name:name,field_type:type,is_required:!!(document.getElementById('sch-req')&&document.getElementById('sch-req').checked),field_group:grp,project_id:APP.project.id,is_active:true};
   if(isCode){
     payload.key=key;payload.is_part_of_code=true;
     payload.code_order=parseInt(document.getElementById('sch-order').value)||99;

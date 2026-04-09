@@ -7,7 +7,7 @@ function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:
 function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 
-var APP={user:null,project:null,schemas:[],users:[],packages:[],groups:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
+var APP={user:null,project:null,schemas:[],users:[],packages:[],groups:[],phases:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
 function can(a){
   if(!APP.user)return false;
@@ -258,11 +258,12 @@ function selectProject(projectId){
       var p3=sbGet('packages','?project_id=eq.'+pid+'&is_active=eq.true&order=code.asc');
       var p4=sbGet('project_members','?project_id=eq.'+pid+'&select=id,user_id,role,permissions,users(id,full_name,email,role,specialty,company,is_active)');
       var p5=sbGet('deliverable_groups','?project_id=eq.'+pid+'&is_active=eq.true&order=name.asc').catch(function(){return[];});
-      return Promise.all([p2,sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc'),p3,p4,p5]);
+      var p6=sbGet('project_phases','?project_id=eq.'+pid+'&is_active=eq.true&order=display_order.asc').catch(function(){return[];});
+      return Promise.all([p2,sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc'),p3,p4,p5,p6]);
     })
     .then(function(r){
       APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];
-      APP.projectMembers=r[3]||[];APP.groups=r[4]||[];
+      APP.projectMembers=r[3]||[];APP.groups=r[4]||[];APP.phases=r[5]||[];
       // Guardar la membresía del usuario actual en este proyecto
       APP.projectMember=APP.projectMembers.find(function(m){return m.user_id===APP.user.id;})||null;
       try{
@@ -302,6 +303,7 @@ function showApp(user){
   var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdminLvl?'flex':'none';
   var modBtn=document.getElementById('sb-models');if(modBtn)modBtn.style.display='flex';
   var grpBtn=document.getElementById('sb-groups');if(grpBtn)grpBtn.style.display=isAdminLvl?'flex':'none';
+  var phsBtn=document.getElementById('sb-phases');if(phsBtn)phsBtn.style.display=isAdminLvl?'flex':'none';
   var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdminLvl?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
   restoreSidebarState();
@@ -404,7 +406,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
 
 // ── NAV ──
-var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables'};
+var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables',phases:'Fases del proyecto'};
 // ── SIDEBAR COLLAPSE ──
 function toggleSidebar(){
   var sb=document.querySelector('.sidebar');
@@ -435,8 +437,8 @@ function nav(view,el){
     contentEl.style.padding='20px';
     contentEl.style.overflowY='auto';
   }
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups})[view]&&
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups})[view]();
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]&&
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]();
 }
 
 // ── DELIVERABLES ──
@@ -1346,7 +1348,7 @@ function exportMIDP(){
 
 // ── PROGRESS ──
 function renderProgress(){
-  document.getElementById('topbar-actions').innerHTML='';
+  document.getElementById('topbar-actions').innerHTML=isAdminLevel()?'<button class="btn btn-sm" onclick="openProgressConfigPanel()">⚙ Configurar vista</button>':'';
   document.getElementById('content').innerHTML=
     '<div class="card" style="padding:14px 16px;margin-bottom:16px">'+
     '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Filtros</div>'+
@@ -1362,7 +1364,9 @@ function renderProgress(){
     '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Fase RIBA</label>'+
     '<select class="input" style="width:160px;font-size:11px" id="pf-phase" onchange="applyProgressFilters()">'+
     '<option value="">Todas las fases</option>'+
-    getPhaseGroups().map(function(ph){return '<option value="'+ph.key+'">'+ph.label+(ph.sub?' - '+ph.sub:'')+'</option>';}).join('')+
+    (getProjectPhases().length>0
+      ?getProjectPhases().map(function(ph){return '<option value="'+ph.id+'">'+ph.name+(ph.sub_label?' — '+ph.sub_label:'')+'</option>';}).join('')
+      :getPhaseGroups().map(function(ph){return '<option value="'+ph.key+'">'+ph.label+(ph.sub?' - '+ph.sub:'')+'</option>';}).join(''))+
     '</select></div>'+
     '<div style="padding-top:16px"><button class="btn btn-sm" onclick="clearProgressFilters()">x Limpiar</button></div>'+
     '</div></div>'+
@@ -1380,8 +1384,9 @@ function renderProgress(){
     .then(function(prod){
       window._progressProd=prod;
     var discs=[];
+    var _progDiscField=getProgressConfig().discField||'disciplina';
     dels.forEach(function(d){
-      var disc=(d.field_values&&d.field_values.disciplina)||'';
+      var disc=(d.field_values&&d.field_values[_progDiscField])||d[_progDiscField]||'';
       if(disc&&discs.indexOf(disc)<0)discs.push(disc);
     });
     discs.sort();
@@ -1412,13 +1417,23 @@ function applyProgressFilters(){
   var allDels=window._progressAllDels;
   if(!allDels)return;
   var deliverables=allDels.filter(function(d){
-    if(disc&&(d.field_values&&d.field_values.disciplina)!==disc)return false;
+    var _discKey=getProgressConfig().discField||'disciplina';
+    if(disc&&((d.field_values&&d.field_values[_discKey])||d[_discKey]||'')!==disc)return false;
     if(pkg&&d.work_package!==pkg)return false;
     if(phase){
-      var hasPhaseDate=isKnownPhase(phase)
-        ?!!d[phase+'_delivery_date']
-        :!!(d.field_values&&d.field_values[phase+'__delivery_date']);
-      if(!hasPhaseDate)return false;
+      var hasPhase=false;
+      // Check if it's a project phase ID or a schema phase key
+      var projPh=(APP.phases||[]).find(function(p){return p.id===phase;});
+      if(projPh){
+        // Match by field_key + field_value
+        var fv=d.field_values||{};
+        hasPhase=(fv[projPh.field_key]||d[projPh.field_key]||'')===projPh.field_value;
+      }else{
+        hasPhase=isKnownPhase(phase)
+          ?!!d[phase+'_delivery_date']
+          :!!(d.field_values&&d.field_values[phase+'__delivery_date']);
+      }
+      if(!hasPhase)return false;
     }
     return true;
   });
@@ -1449,9 +1464,10 @@ function renderProgressContent(deliverables,prod){
   var totalDels=deliverables.length;
   var completedDels=deliverables.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
   var canProg=can('can_register_progress');
+  var discFieldKey=getProgressConfig().discField||'disciplina';
   var byDisc={};
   deliverables.forEach(function(d){
-    var disc=(d.field_values&&d.field_values.disciplina)||'--';
+    var disc=(d.field_values&&d.field_values[discFieldKey])||d[discFieldKey]||'--';
     if(!byDisc[disc])byDisc[disc]={plan:0,consUP:0,total:0,comp:0};
     var p=prodMap[d.id]||{plan:0,pct:0,consUP:0};
     byDisc[disc].plan+=p.plan;
@@ -1459,29 +1475,76 @@ function renderProgressContent(deliverables,prod){
     byDisc[disc].total++;
     if(d.status==='approved'||d.status==='issued')byDisc[disc].comp++;
   });
-  var phaseStats=getPhaseGroups().map(function(ph){
-    var phDels=deliverables.filter(function(d){
-      // For known phases use direct column; custom hito field_values
-      var dateVal=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:
-        (d.field_values&&d.field_values[ph.key+'__delivery_date']);
-      return !!dateVal;
+  // Use project phases (APP.phases) if configured; fallback to field_schemas phases
+  var configuredPhases=getProjectPhases();
+  var phaseSource=configuredPhases.length>0?'configured':'schemas';
+  var phaseStats=[];
+  if(phaseSource==='configured'){
+    // Use project_phases table: match by field_key + field_value
+    phaseStats=configuredPhases.map(function(ph){
+      var phDels=deliverables.filter(function(d){
+        // Check field_values (code fields) or direct columns
+        var fv=d.field_values||{};
+        var fieldVal=fv[ph.field_key]||d[ph.field_key]||'';
+        return fieldVal===ph.field_value;
+      });
+      var phTotalUP=0,phConsUP=0;
+      phDels.forEach(function(d){
+        var p=prodMap[d.id]||{plan:0,consUP:0};
+        phTotalUP+=p.plan;phConsUP+=(p.consUP||0);
+      });
+      var phPct=phTotalUP>0?Math.round(phConsUP/phTotalUP*100):0;
+      var comp=phDels.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
+      // Overdue: check date_field_key
+      var overdue=0;
+      if(ph.date_field_key){
+        overdue=phDels.filter(function(d){
+          var dateVal=isKnownPhase(ph.date_field_key.replace(/_delivery_date$/,''))?d[ph.date_field_key]:
+            (d.field_values&&d.field_values[ph.date_field_key])||d[ph.date_field_key]||null;
+          return dateVal&&new Date(dateVal)<new Date()&&d.status!=='approved'&&d.status!=='issued';
+        }).length;
+      }
+      // Adapt to same shape as schema-based phases
+      return {
+        ph:{key:ph.id,label:ph.name,sub:ph.sub_label||'',color:ph.color||'var(--brand)'},
+        withDate:phDels.length,comp:comp,overdue:overdue,pct:phPct,
+        totalUP:phTotalUP,consUP:phConsUP,phDels:phDels
+      };
     });
-    // Weighted progress for this phase
-    var phTotalUP=0,phConsUP=0;
-    phDels.forEach(function(d){
-      var p=prodMap[d.id]||{plan:0,consUP:0};
-      phTotalUP+=p.plan;phConsUP+=(p.consUP||0);
+  }else{
+    // Fallback: use getPhaseGroups() from field_schemas
+    phaseStats=getPhaseGroups().map(function(ph){
+      var phDels=deliverables.filter(function(d){
+        var dateVal=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:
+          (d.field_values&&d.field_values[ph.key+'__delivery_date']);
+        return !!dateVal;
+      });
+      var phTotalUP=0,phConsUP=0;
+      phDels.forEach(function(d){
+        var p=prodMap[d.id]||{plan:0,consUP:0};
+        phTotalUP+=p.plan;phConsUP+=(p.consUP||0);
+      });
+      var phPct=phTotalUP>0?Math.round(phConsUP/phTotalUP*100):0;
+      var comp=phDels.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
+      var overdue=phDels.filter(function(d){
+        var dateVal=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:
+          (d.field_values&&d.field_values[ph.key+'__delivery_date']);
+        return dateVal&&new Date(dateVal)<new Date()&&d.status!=='approved'&&d.status!=='issued';
+      }).length;
+      return {ph:ph,withDate:phDels.length,comp:comp,overdue:overdue,pct:phPct,totalUP:phTotalUP,consUP:phConsUP};
     });
-    var phPct=phTotalUP>0?Math.round(phConsUP/phTotalUP*100):0;
-    var comp=phDels.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
-    var overdue=phDels.filter(function(d){
-      var dateVal=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:
-        (d.field_values&&d.field_values[ph.key+'__delivery_date']);
-      return dateVal&&new Date(dateVal)<new Date()&&d.status!=='approved'&&d.status!=='issued';
-    }).length;
-    return {ph:ph,withDate:phDels.length,comp:comp,overdue:overdue,pct:phPct,totalUP:phTotalUP,consUP:phConsUP};
-  });
+  }
+  // Show config hint if no project phases configured
+  var phaseHint='';
+  if(phaseSource==='schemas'&&isAdminLevel()){
+    phaseHint='<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#c2410c;display:flex;align-items:center;gap:10px">'+
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+      '<div>Las fases se detectan automáticamente desde los hitos del esquema. Para mayor control, configura las fases en el menú <strong>Fases</strong> del proyecto.'+
+      (isAdminLevel()?' <button class="btn btn-sm" onclick="nav(\'phases\',document.getElementById(\'sb-phases\'))">Configurar Fases</button>':'')+ 
+      '</div></div>';
+  }
   var html=
+    phaseHint+
     '<div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'+
     kpiCard('Entregables','var(--brand-light)','var(--brand)',totalDels,'registrados')+
     kpiCard('Completados','var(--green-light)','var(--green)',completedDels,(totalDels?Math.round(completedDels/totalDels*100):0)+'%')+
@@ -1528,7 +1591,9 @@ function renderProgressContent(deliverables,prod){
     '<table class="tbl"><thead><tr>'+
     '<th>Entregable</th><th>Disciplina</th>'+
     '<th title="Peso (Unidades Productivas)">Peso</th><th title="% de avance registrado">Avance %</th>'+
-    getPhaseGroups().map(function(ph){return '<th style="color:'+ph.color+';font-size:9px">'+ph.label+' Fecha</th>';}).join('')+
+    (phaseStats.length>0
+      ?phaseStats.map(function(ps){return '<th style="color:'+ps.ph.color+';font-size:9px">'+ps.ph.label+' Fecha</th>';}).join('')
+      :'')+
     '<th>Estado</th>'+(canProg?'<th>Registrar</th>':'')+
     '</tr></thead><tbody>'+
     deliverables.map(function(d){
@@ -1536,11 +1601,21 @@ function renderProgressContent(deliverables,prod){
       var weight=p.plan||0;
       var pct=Math.min(100,Math.max(0,Math.round(p.pct||0)));
       var today=new Date();
-      var phaseDates=getPhaseGroups().map(function(ph){
-        // known phases: direct column; custom hitos: field_values JSONB
-        var dt=isKnownPhase(ph.key)
-          ?d[ph.key+'_delivery_date']
-          :(d.field_values&&d.field_values[ph.key+'__delivery_date'])||null;
+      var phaseDates=phaseStats.map(function(ps){
+        var dt='';
+        var ph=ps.ph;
+        // Find date for this deliverable in this phase
+        var projPh=(APP.phases||[]).find(function(p){return p.id===ph.key;});
+        if(projPh&&projPh.date_field_key){
+          // Use the configured date field
+          dt=isKnownPhase(projPh.date_field_key.replace(/_delivery_date$/,''))?
+            d[projPh.date_field_key]||'':
+            (d.field_values&&d.field_values[projPh.date_field_key])||d[projPh.date_field_key]||'';
+        }else if(!projPh){
+          // Schema-based phase
+          dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']||'':
+            (d.field_values&&d.field_values[ph.key+'__delivery_date'])||'';
+        }
         if(!dt)return '<td style="font-size:10px;color:var(--text3)">--</td>';
         var overdue=new Date(dt)<today&&d.status!=='approved'&&d.status!=='issued';
         return '<td style="font-size:10px;'+(overdue?'color:var(--red);font-weight:600':'color:var(--text2)')+'">'+fmtDateShort(dt)+(overdue?' ⚠':'')+'</td>';
@@ -1548,7 +1623,7 @@ function renderProgressContent(deliverables,prod){
       return '<tr>'+
         '<td><span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
         '<div style="font-size:9px;color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</div></td>'+
-        '<td><span class="badge b-progress" style="font-size:9px">'+((d.field_values&&d.field_values.disciplina)||'--')+'</span></td>'+
+        '<td><span class="badge b-progress" style="font-size:9px">'+((d.field_values&&d.field_values[discFieldKey])||d[discFieldKey]||'--')+'</span></td>'+
         '<td style="text-align:center;color:var(--brand)"><div style="font-weight:700">'+p.plan+'</div><div style="font-size:9px;color:var(--text3)">'+Math.round((p.consUP||0)*10)/10+' UP</div></td>'+
         '<td><div style="display:flex;align-items:center;gap:5px">'+
         '<span style="font-size:10px;font-weight:700;color:'+progColor(pct)+'">'+pct+'%</span></div></td>'+
@@ -2516,6 +2591,318 @@ function openModelConfigModal(){
     overlay.remove();
     renderModels();
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── FASES DEL PROYECTO ──
+// Configura qué fases tiene el proyecto y cómo se identifican
+// los entregables de cada fase (campo de codificación o general)
+// ══════════════════════════════════════════════════════════════
+
+// ── Config panel for Control de avance ──
+function openProgressConfigPanel(){
+  if(!isAdminLevel()){toast('Sin permiso.','error');return;}
+  var projectPhases=getProjectPhases();
+
+  var overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='prog-cfg-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:560px">'+
+    '<div class="modal-header">'+
+    '<div><div class="modal-title">⚙ Configurar Control de avance</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Define qué campos se usan para los gráficos y métricas</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="pcfg-close">X</button></div>'+
+    '<div class="modal-body">'+
+
+    // Disciplina field config
+    '<div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:10px">📊 Campo Disciplina</div>'+
+    '<div class="form-group">'+
+    '<label class="label">Campo que contiene la disciplina del entregable</label>'+
+    '<select class="input" id="pcfg-disc-field">'+
+    '<option value="">— Sin disciplina configurada —</option>'+
+    codeSchemas().concat(generalSchemas()).map(function(s){
+      var saved=getProgressConfig().discField||'disciplina';
+      return '<option value="'+s.key+'"'+(saved===s.key?' selected':'')+'>'+s.name+' ('+s.key+')</option>';
+    }).join('')+
+    '</select></div></div>'+
+
+    // Phase cards info
+    (projectPhases.length>0?
+      '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;margin-bottom:12px">'+
+      '<div style="font-size:11px;font-weight:700;color:#15803d;margin-bottom:6px">✅ Fases configuradas ('+projectPhases.length+')</div>'+
+      '<div style="font-size:11px;color:var(--text2)">'+
+      projectPhases.map(function(ph){
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'+
+          '<span style="width:10px;height:10px;border-radius:50%;background:'+ph.color+';flex-shrink:0"></span>'+
+          '<strong>'+ph.name+'</strong> — campo: <code>'+ph.field_key+'</code> = "'+ph.field_value+'"'+
+          (ph.date_field_key?' · fecha: <code>'+ph.date_field_key+'</code>':' <span style="color:var(--red);font-size:10px">⚠ Sin fecha de entrega</span>')+
+          '</div>';
+      }).join('')+
+      '</div></div>':
+      '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:#c2410c">'+
+      '⚠ No hay fases configuradas. Las tarjetas de fases en Control de avance estarán vacías.'+
+      '<br><button class="btn btn-sm" style="margin-top:8px" onclick="document.getElementById(\'prog-cfg-modal\').remove();nav(\'phases\',document.getElementById(\'sb-phases\'))">→ Configurar Fases</button>'+
+      '</div>')+
+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="pcfg-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="pcfg-save">Guardar configuración</button>'+
+    '</div></div>';
+
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('pcfg-close').onclick=function(){overlay.remove();};
+  document.getElementById('pcfg-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('pcfg-save').onclick=function(){
+    var discField=document.getElementById('pcfg-disc-field').value;
+    saveProgressConfig({discField:discField||'disciplina'});
+    toast('Configuración guardada.');
+    overlay.remove();
+    renderProgress();
+  };
+}
+
+// Progress config stored in localStorage per project
+function getProgressConfig(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return {discField:'disciplina'};
+  try{var r=localStorage.getItem('midp_progress_cfg_'+pid);if(r)return JSON.parse(r);}catch(e){}
+  return {discField:'disciplina'};
+}
+function saveProgressConfig(cfg){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return;
+  localStorage.setItem('midp_progress_cfg_'+pid,JSON.stringify(cfg));
+}
+
+function renderPhases(){
+  if(!isAdminLevel()){
+    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Acceso restringido</div><div class="empty-desc">Solo el administrador puede configurar fases.</div></div>';
+    return;
+  }
+  document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-primary btn-sm" onclick="openPhaseModal(null)">+ Nueva fase</button>';
+  document.getElementById('content').innerHTML=loading();
+
+  sbGet('project_phases','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=display_order.asc')
+    .then(function(phases){
+      APP.phases=phases;
+      if(!phases.length){
+        document.getElementById('content').innerHTML=
+          '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:10px;padding:20px;margin-bottom:16px">'+
+          '<div style="font-size:13px;font-weight:700;color:var(--brand);margin-bottom:8px">¿Para qué sirven las Fases?</div>'+
+          '<div style="font-size:12px;color:var(--text2);line-height:1.6">'+
+          'Las fases permiten vincular entregables a etapas del proyecto (RIBA 2, RIBA 3, Construcción, etc.).<br>'+
+          'Para cada fase debes definir:<br>'+
+          '• <strong>Qué campo identifica la fase</strong> — ej: el campo "Fase Proyecto" con valor "RIBA 2"<br>'+
+          '• <strong>Qué campo contiene la fecha de entrega</strong> — para medir avance y alertas de vencimiento<br>'+
+          'Esto reemplaza la dependencia de columnas fijas y funciona con cualquier esquema de codificación.'+
+          '</div></div>'+
+          '<div class="empty"><div class="empty-icon">🗓️</div>'+
+          '<div class="empty-title">Sin fases configuradas</div>'+
+          '<div class="empty-desc">Crea la primera con <strong>+ Nueva fase</strong></div></div>';
+        return;
+      }
+
+      // Build all field options for display
+      var allSchemas=codeSchemas().concat(generalSchemas());
+
+      var rows=phases.map(function(ph){
+        // Find display names for configured fields
+        var idSchm=allSchemas.find(function(s){return s.key===ph.field_key;})||null;
+        var dtSchm=allSchemas.find(function(s){return s.key===ph.date_field_key;})||null;
+        var tr=document.createElement('tr');
+        tr.innerHTML=
+          '<td><span class="code-chip">'+ph.order_num+'</span></td>'+
+          '<td><div style="font-weight:600;color:var(--text)">'+ph.name+'</div>'+
+          (ph.sub_label?'<div style="font-size:10px;color:var(--text3)">'+ph.sub_label+'</div>':'')+
+          '</td>'+
+          '<td><div style="font-size:11px"><span class="schema-key">.'+ph.field_key+'</span>'+
+          (idSchm?'<span style="font-size:10px;color:var(--text3);margin-left:4px">'+idSchm.name+'</span>':'')+
+          '</div>'+
+          '<div style="font-size:10px;color:var(--brand);margin-top:2px">= "'+ph.field_value+'"</div></td>'+
+          '<td><div style="font-size:11px">'+
+          (ph.date_field_key?
+            '<span class="schema-key">.'+ph.date_field_key+'</span>'+
+            (dtSchm?'<span style="font-size:10px;color:var(--text3);margin-left:4px">'+dtSchm.name+'</span>':'')
+            :'<span style="color:var(--text3);font-size:11px">No configurado</span>')+
+          '</div></td>'+
+          '<td style="text-align:center">'+
+          '<div style="width:16px;height:16px;border-radius:50%;background:'+ph.color+';margin:0 auto"></div></td>'+
+          '<td></td>';
+        var btnEdit=document.createElement('button');btnEdit.className='btn btn-ghost btn-sm';
+        btnEdit.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        btnEdit.onclick=(function(pid){return function(){openPhaseModal(pid);};})(ph.id);
+        var btnDel=document.createElement('button');btnDel.className='btn btn-ghost btn-sm';btnDel.style.color='var(--red)';
+        btnDel.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+        btnDel.onclick=(function(pid,pname){return function(){confirmDeletePhase(pid,pname);};})(ph.id,ph.name);
+        var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:4px;justify-content:flex-end';
+        wrap.appendChild(btnEdit);wrap.appendChild(btnDel);
+        tr.lastElementChild.appendChild(wrap);
+        return tr.outerHTML;
+      }).join('');
+
+      document.getElementById('content').innerHTML=
+        '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#15803d">'+
+        '✅ <strong>'+phases.length+'</strong> fase'+(phases.length>1?'s':'')+' configurada'+(phases.length>1?'s':'')+' · '+
+        'El menú Control de avance las mostrará automáticamente'+
+        '</div>'+
+        '<div class="card" style="overflow:hidden"><table class="tbl"><thead><tr>'+
+        '<th>#</th><th>Nombre de la fase</th><th>Campo identificador · Valor</th><th>Campo fecha de entrega</th><th>Color</th><th style="text-align:right">Acciones</th>'+
+        '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }).catch(function(e){
+      document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'<br><small>Ejecuta el SQL de creación de tabla project_phases en Supabase.</small></div></div>';
+    });
+}
+
+function openPhaseModal(phId){
+  var fetchPh=phId
+    ?sbGet('project_phases','?id=eq.'+phId+'&limit=1').then(function(r){return r[0]||null;})
+    :Promise.resolve(null);
+
+  fetchPh.then(function(ph){
+    // Build field options from schemas
+    var codeOpts=codeSchemas().map(function(s){
+      return '<option value="'+s.key+'"'+(ph&&ph.field_key===s.key?' selected':'')+'>'+s.name+' ('+s.key+') — codificación</option>';
+    }).join('');
+    var genOpts=generalSchemas().map(function(s){
+      return '<option value="'+s.key+'"'+(ph&&ph.field_key===s.key?' selected':'')+'>'+s.name+' ('+s.key+') — general</option>';
+    }).join('');
+    var fieldOpts='<option value="">Seleccionar campo...</option>'+codeOpts+genOpts;
+
+    // Date field options (all schemas)
+    var allDateOpts='<option value="">Sin fecha de entrega</option>'+
+      codeSchemas().concat(generalSchemas()).map(function(s){
+        return '<option value="'+s.key+'"'+(ph&&ph.date_field_key===s.key?' selected':'')+'>'+s.name+' ('+s.key+')</option>';
+      }).join('');
+
+    // Phase schemas date fields (riba2_delivery_date, etc.)
+    var knownDates='<optgroup label="Campos de hito (columnas directas)">'+
+      [].concat.apply([],getPhaseGroups().map(function(g){
+        return phaseSchemas(g.key).filter(function(s){return s.field_type==='date';}).map(function(s){
+          var display=s.name+' ('+s.key+')';
+          return '<option value="'+s.key+'"'+(ph&&ph.date_field_key===s.key?' selected':'')+'>'+display+'</option>';
+        });
+      })).join('')+
+      '</optgroup>';
+
+    var orderVal=ph?ph.display_order:(APP.phases.length+1);
+    var colorVal=ph?ph.color:['#3B6FE8','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4'][APP.phases.length%6];
+
+    var overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='phase-modal';
+    overlay.innerHTML=
+      '<div class="modal" style="max-width:580px">'+
+      '<div class="modal-header">'+
+      '<div><div class="modal-title">'+(ph?'Editar fase: '+ph.name:'Nueva fase del proyecto')+'</div>'+
+      '<div style="font-size:11px;color:var(--text3);margin-top:2px">Define cómo se identifican los entregables de esta fase</div>'+
+      '</div>'+
+      '<button class="btn btn-ghost btn-sm" id="pm-close">X</button></div>'+
+      '<div class="modal-body">'+
+
+      '<div class="form-grid">'+
+      '<div class="form-group"><label class="label">Nombre de la fase *</label>'+
+      '<input type="text" class="input" id="ph-name" value="'+(ph?ph.name:'')+'" placeholder="Ej: RIBA 2, Construcción, Licitación..."></div>'+
+      '<div class="form-group"><label class="label">Subtítulo / descripción corta</label>'+
+      '<input type="text" class="input" id="ph-sub" value="'+(ph?ph.sub_label||'':'')+'" placeholder="Ej: Presentación 0, Etapa 1..."></div>'+
+      '<div class="form-group"><label class="label">Orden de visualización</label>'+
+      '<input type="number" class="input" id="ph-order" value="'+orderVal+'" min="1"></div>'+
+      '<div class="form-group"><label class="label">Color identificador</label>'+
+      '<input type="color" class="input" id="ph-color" value="'+colorVal+'" style="height:38px;cursor:pointer"></div>'+
+      '</div>'+
+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin:10px 0">'+
+      '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Identificación de entregables</div>'+
+      '<div class="form-grid">'+
+      '<div class="form-group full">'+
+      '<label class="label">Campo que identifica la fase *'+
+      '<span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:6px">¿En qué campo está guardada la fase del entregable?</span></label>'+
+      '<select class="input" id="ph-field-key">'+fieldOpts+'</select>'+
+      '</div>'+
+      '<div class="form-group full">'+
+      '<label class="label">Valor que debe tener ese campo *'+
+      '<span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:6px">Ej: "RIBA2", "Construccion", "F1"</span></label>'+
+      '<input type="text" class="input" id="ph-field-value" value="'+(ph?ph.field_value||'':'')+'" placeholder="Valor exacto a buscar">'+
+      '</div>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--text3);margin-top:4px">'+
+      '💡 Un entregable pertenece a esta fase si su <strong>campo seleccionado</strong> tiene exactamente este <strong>valor</strong>.</div>'+
+      '</div>'+
+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin:10px 0">'+
+      '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Fecha de entrega</div>'+
+      '<div class="form-group full">'+
+      '<label class="label">Campo con la fecha de entrega'+
+      '<span style="font-size:10px;color:var(--text3);font-weight:400;margin-left:6px">Se usa para alertas de vencimiento y filtros de fase</span></label>'+
+      '<select class="input" id="ph-date-key">'+allDateOpts+knownDates+'</select>'+
+      '</div>'+
+      '</div>'+
+
+      '</div>'+
+      '<div class="modal-footer">'+
+      '<button class="btn" id="ph-cancel">Cancelar</button>'+
+      '<button class="btn btn-primary" id="ph-save">'+(ph?'Actualizar fase':'Crear fase')+'</button>'+
+      '</div></div>';
+
+    document.getElementById('modal-container').appendChild(overlay);
+    document.getElementById('pm-close').onclick=function(){overlay.remove();};
+    document.getElementById('ph-cancel').onclick=function(){overlay.remove();};
+    document.getElementById('ph-save').onclick=function(){savePhase(phId||null,overlay);};
+  });
+}
+
+function savePhase(phId,overlay){
+  var name=document.getElementById('ph-name').value.trim();
+  var fieldKey=document.getElementById('ph-field-key').value;
+  var fieldValue=document.getElementById('ph-field-value').value.trim();
+  if(!name||!fieldKey||!fieldValue){toast('Nombre, campo y valor son obligatorios.','error');return;}
+
+  var payload={
+    project_id:APP.project.id,
+    name:name,
+    sub_label:document.getElementById('ph-sub').value.trim()||null,
+    display_order:parseInt(document.getElementById('ph-order').value)||1,
+    order_num:parseInt(document.getElementById('ph-order').value)||1,
+    color:document.getElementById('ph-color').value||'#3B6FE8',
+    field_key:fieldKey,
+    field_value:fieldValue,
+    date_field_key:document.getElementById('ph-date-key').value||null,
+    is_active:true
+  };
+
+  var req=phId?sbPatch('project_phases','id=eq.'+phId,payload):sbPost('project_phases',payload);
+  req.then(function(){
+    toast(phId?'Fase actualizada.':'Fase creada.');
+    overlay.remove();
+    renderPhases();
+    // Reload phases into APP
+    sbGet('project_phases','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=display_order.asc')
+      .then(function(ph){APP.phases=ph||[];}).catch(function(){});
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+function confirmDeletePhase(phId,phName){
+  var overlay=document.createElement('div');overlay.className='modal-overlay';overlay.id='ph-confirm';
+  overlay.innerHTML='<div class="modal" style="max-width:380px">'+
+    '<div class="modal-header"><div class="modal-title">Eliminar fase?</div>'+
+    '<button class="btn btn-ghost btn-sm" id="phc-close">X</button></div>'+
+    '<div class="modal-body"><p style="font-size:13px;color:var(--text2)">¿Eliminar la fase <strong>'+phName+'</strong>?</p>'+
+    '<p style="font-size:11px;color:var(--text3);margin-top:6px">No afecta a los entregables registrados.</p></div>'+
+    '<div class="modal-footer"><button class="btn" id="phc-cancel">Cancelar</button>'+
+    '<button class="btn btn-danger" id="phc-del">Eliminar</button></div></div>';
+  document.getElementById('modal-container').appendChild(overlay);
+  document.getElementById('phc-close').onclick=function(){overlay.remove();};
+  document.getElementById('phc-cancel').onclick=function(){overlay.remove();};
+  document.getElementById('phc-del').onclick=function(){
+    sbPatch('project_phases','id=eq.'+phId,{is_active:false})
+      .then(function(){overlay.remove();toast('Fase eliminada.');renderPhases();})
+      .catch(function(e){toast(e.message,'error');});
+  };
+}
+
+// Helper: get project phases — use APP.phases if loaded, else empty array
+function getProjectPhases(){
+  return APP.phases||[];
 }
 
 function renderGroups(){

@@ -32,6 +32,29 @@ function isAdminLevel(){if(!APP.user)return false;if(APP.user.role==='admin')ret
 function isKnownPhase(phKey){
   return phKey==='riba2'||phKey==='riba3'||phKey==='riba4';
 }
+
+// Get any field value from a deliverable — checks direct columns AND field_values JSONB
+function getDelFieldVal(d, fieldKey){
+  if(!d||!fieldKey)return '';
+  // 1. Direct column (riba2_delivery_date, work_package, etc.)
+  if(d[fieldKey]!=null&&d[fieldKey]!=='')return d[fieldKey];
+  // 2. field_values exact key
+  var fv=d.field_values||{};
+  if(fv[fieldKey]!=null&&fv[fieldKey]!=='')return fv[fieldKey];
+  // 3. field_values with double-underscore prefix (custom hito format: group__field)
+  // e.g. date_field_key = 'delivery_date' but stored as 'hito_01__delivery_date'
+  var keys=Object.keys(fv);
+  for(var i=0;i<keys.length;i++){
+    var k=keys[i];
+    // Match: key ends with '__fieldKey' or is exactly fieldKey
+    if(k===fieldKey)return fv[k]||'';
+    if(k.indexOf('__')>=0&&k.split('__').pop()===fieldKey&&fv[k])return fv[k];
+    // Also match full suffix: 'hito_01__delivery_date' matches 'hito_01_delivery_date'
+    if(k.replace('__','_')===fieldKey&&fv[k])return fv[k];
+  }
+  return '';
+}
+
 // Gets the field key and value that identify "models" for this project
 // Default: field_values->>tipo_documento = 'MOD'
 // Configurable: stored in localStorage as midp_model_cfg_{projectId}
@@ -1484,8 +1507,8 @@ function renderProgressContent(deliverables,prod){
     phaseStats=configuredPhases.map(function(ph){
       var phDels=deliverables.filter(function(d){
         // Check field_values (code fields) or direct columns
-        var fv=d.field_values||{};
-        var fieldVal=fv[ph.field_key]||d[ph.field_key]||'';
+        var fieldVal=getDelFieldVal(d,ph.field_key);
+        return fieldVal===ph.field_value;
         return fieldVal===ph.field_value;
       });
       var phTotalUP=0,phConsUP=0;
@@ -1498,10 +1521,8 @@ function renderProgressContent(deliverables,prod){
       // Overdue: check date_field_key
       var overdue=0;
       if(ph.date_field_key){
-        var dk2=ph.date_field_key;
         overdue=phDels.filter(function(d){
-          var dateVal=d[dk2]||(d.field_values&&d.field_values[dk2])||
-            (d.field_values&&d.field_values[dk2.replace(/_delivery_date$/,'__delivery_date')])||'';
+          var dateVal=getDelFieldVal(d,ph.date_field_key);
           return dateVal&&new Date(dateVal)<new Date()&&d.status!=='approved'&&d.status!=='issued';
         }).length;
       }
@@ -1607,27 +1628,13 @@ function renderProgressContent(deliverables,prod){
         var ph=ps.ph;
         var projPh=(APP.phases||[]).find(function(p){return p.id===ph.key;});
         if(projPh&&projPh.date_field_key){
-          var dk=projPh.date_field_key;
-          // Try ALL possible locations in order of priority:
-          // 1. Direct DB column (riba2_delivery_date, etc.)
-          // 2. field_values JSONB (custom hito schema with double underscore key)
-          // 3. field_values JSONB (direct key match)
-          // 4. Any field_values key that ends with the configured key
-          dt=d[dk]||
-             (d.field_values&&d.field_values[dk])||
-             (d.field_values&&d.field_values[dk.replace(/_delivery_date$/,'__delivery_date')])||
-             '';
-          // Also try stripping group prefix if key is like 'hito_01_delivery_date'
-          if(!dt&&d.field_values){
-            var fv=d.field_values;
-            // Try finding key in field_values by partial match
-            Object.keys(fv).forEach(function(k){
-              if(!dt&&(k===dk||k.replace(/^[^_]+__/,'')+''===dk||k.endsWith('__'+dk)))dt=fv[k]||'';
-            });
-          }
+          // Use the universal field value getter
+          dt=getDelFieldVal(d,projPh.date_field_key);
         }else if(!projPh){
-          dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']||'':
-            (d.field_values&&d.field_values[ph.key+'__delivery_date'])||'';
+          // Schema-based phase fallback
+          dt=isKnownPhase(ph.key)
+            ?d[ph.key+'_delivery_date']||''
+            :(d.field_values&&d.field_values[ph.key+'__delivery_date'])||'';
         }
         if(!dt)return '<td style="font-size:10px;color:var(--text3)">--</td>';
         var overdue=new Date(dt)<today&&d.status!=='approved'&&d.status!=='issued';
@@ -2857,10 +2864,14 @@ function openPhaseModal(phId){
       '<button class="btn btn-primary" id="ph-save">'+(ph?'Actualizar fase':'Crear fase')+'</button>'+
       '</div></div>';
 
+    // Remove any existing phase modal first
+    var existing=document.getElementById('phase-modal');
+    if(existing)existing.remove();
     document.getElementById('modal-container').appendChild(overlay);
-    document.getElementById('pm-close').onclick=function(){overlay.remove();};
-    document.getElementById('ph-cancel').onclick=function(){overlay.remove();};
-    document.getElementById('ph-save').onclick=function(){savePhase(phId||null,overlay);};
+    // Use overlay.querySelector to avoid ID conflicts with other modals
+    overlay.querySelector('#pm-close').onclick=function(){overlay.remove();};
+    overlay.querySelector('#ph-cancel').onclick=function(){overlay.remove();};
+    overlay.querySelector('#ph-save').onclick=function(){savePhase(phId||null,overlay);};
   });
 }
 

@@ -2728,20 +2728,19 @@ function renderPhases(){
       // Build all field options for display
       var allSchemas=codeSchemas().concat(generalSchemas());
 
-      var rows=phases.map(function(ph){
-        // Find display names for configured fields
+      // Build row HTML with data-id attributes — NO onclick in outerHTML (listeners attached after)
+      var allSchemas=codeSchemas().concat(generalSchemas());
+      var rowsHtml=phases.map(function(ph){
         var idSchm=allSchemas.find(function(s){return s.key===ph.field_key;})||null;
         var dtSchm=allSchemas.find(function(s){return s.key===ph.date_field_key;})||null;
-        var tr=document.createElement('tr');
-        tr.innerHTML=
+        return '<tr data-phase-id="'+ph.id+'" data-phase-name="'+ph.name.replace(/"/g,'&quot;')+'">'+
           '<td><span class="code-chip">'+ph.order_num+'</span></td>'+
           '<td><div style="font-weight:600;color:var(--text)">'+ph.name+'</div>'+
           (ph.sub_label?'<div style="font-size:10px;color:var(--text3)">'+ph.sub_label+'</div>':'')+
           '</td>'+
           '<td><div style="font-size:11px"><span class="schema-key">.'+ph.field_key+'</span>'+
           (idSchm?'<span style="font-size:10px;color:var(--text3);margin-left:4px">'+idSchm.name+'</span>':'')+
-          '</div>'+
-          '<div style="font-size:10px;color:var(--brand);margin-top:2px">= "'+ph.field_value+'"</div></td>'+
+          '</div><div style="font-size:10px;color:var(--brand);margin-top:2px">= "'+ph.field_value+'"</div></td>'+
           '<td><div style="font-size:11px">'+
           (ph.date_field_key?
             '<span class="schema-key">.'+ph.date_field_key+'</span>'+
@@ -2750,17 +2749,14 @@ function renderPhases(){
           '</div></td>'+
           '<td style="text-align:center">'+
           '<div style="width:16px;height:16px;border-radius:50%;background:'+ph.color+';margin:0 auto"></div></td>'+
-          '<td></td>';
-        var btnEdit=document.createElement('button');btnEdit.className='btn btn-ghost btn-sm';
-        btnEdit.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-        btnEdit.onclick=(function(pid){return function(){openPhaseModal(pid);};})(ph.id);
-        var btnDel=document.createElement('button');btnDel.className='btn btn-ghost btn-sm';btnDel.style.color='var(--red)';
-        btnDel.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
-        btnDel.onclick=(function(pid,pname){return function(){confirmDeletePhase(pid,pname);};})(ph.id,ph.name);
-        var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:4px;justify-content:flex-end';
-        wrap.appendChild(btnEdit);wrap.appendChild(btnDel);
-        tr.lastElementChild.appendChild(wrap);
-        return tr.outerHTML;
+          '<td><div style="display:flex;gap:4px;justify-content:flex-end">'+
+          '<button class="btn btn-ghost btn-sm ph-edit-btn" data-id="'+ph.id+'" title="Editar">'+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'+
+          '</button>'+
+          '<button class="btn btn-ghost btn-sm ph-del-btn" data-id="'+ph.id+'" data-name="'+ph.name.replace(/"/g,'&quot;')+'" style="color:var(--red)" title="Eliminar">'+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'+
+          '</button>'+
+          '</div></td></tr>';
       }).join('');
 
       document.getElementById('content').innerHTML=
@@ -2769,8 +2765,23 @@ function renderPhases(){
         'El menú Control de avance las mostrará automáticamente'+
         '</div>'+
         '<div class="card" style="overflow:hidden"><table class="tbl"><thead><tr>'+
-        '<th>#</th><th>Nombre de la fase</th><th>Campo identificador · Valor</th><th>Campo fecha de entrega</th><th>Color</th><th style="text-align:right">Acciones</th>'+
-        '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+        '<th>#</th><th>Nombre de la fase</th><th>Campo identificador · Valor</th>'+
+        '<th>Campo fecha de entrega</th><th>Color</th><th style="text-align:right">Acciones</th>'+
+        '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+
+      // Attach event listeners via data-* after innerHTML set
+      document.querySelectorAll('.ph-edit-btn').forEach(function(btn){
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          openPhaseModal(btn.dataset.id);
+        });
+      });
+      document.querySelectorAll('.ph-del-btn').forEach(function(btn){
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          confirmDeletePhase(btn.dataset.id,btn.dataset.name);
+        });
+      });
     }).catch(function(e){
       document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'<br><small>Ejecuta el SQL de creación de tabla project_phases en Supabase.</small></div></div>';
     });

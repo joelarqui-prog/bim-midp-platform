@@ -688,7 +688,7 @@ function loadDeliverables(){
     dt.innerHTML='';
     // Outer border container — must not clip the table
     var wrapper=document.createElement('div');
-    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:visible';
+    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:visible;margin:0 20px 0 20px';
     wrapper.style.minWidth=minW+'px';
     wrapper.innerHTML=html;
     dt.appendChild(wrapper);

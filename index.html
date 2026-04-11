@@ -100,16 +100,17 @@ textarea.input{resize:vertical;min-height:70px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 /* MIDP scroll table */
 /* Deliverables layout */
-.del-fixed-zone{padding:20px 20px 8px 20px;flex-shrink:0}
+.del-fixed-zone{padding:20px 20px 8px 20px;flex-shrink:0;position:relative;z-index:10;background:var(--bg)}
 .del-scroll-zone{
   flex:1;
   min-height:0;
   overflow:auto;
-  padding:0 20px 20px 20px;
+  padding:0 0 20px 0;
   display:block;
   scrollbar-width:thin;
   scrollbar-color:#475569 #e2e8f0;
   -webkit-overflow-scrolling:touch;
+  position:relative;
 }
 .del-scroll-zone::-webkit-scrollbar{
   width:8px;
@@ -129,7 +130,11 @@ textarea.input{resize:vertical;min-height:70px}
 .midp-tbl tbody tr:hover td{background:#f8fafc}
 .midp-tbl tbody tr:hover .scol{background:#f1f5f9}
 .scol{position:sticky;z-index:3;background:var(--surface);box-shadow:2px 0 4px rgba(0,0,0,.08)}
-.midp-tbl thead .scol{background:var(--bg);z-index:5}
+.midp-tbl .midp-tbl thead tr:first-child th{position:sticky;top:0;z-index:3;background:var(--bg)}
+.midp-tbl thead tr:nth-child(2) th{position:sticky;top:27px;z-index:3;background:var(--bg)}
+.midp-tbl thead tr:first-child .scol{position:sticky;top:0;z-index:6;background:var(--bg)}
+.midp-tbl thead tr:nth-child(2) .scol{position:sticky;top:27px;z-index:6;background:var(--bg)}
+thead .scol{background:var(--bg)}
 </style>
 </head>
 <body>
@@ -224,6 +229,6 @@ textarea.input{resize:vertical;min-height:70px}
 <div class="toast" id="toast"></div>
 <div id="modal-container"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="app.js?v=1775920858"></script>
+  <script src="app.js?v=1775921468"></script>
 </body>
 </html>

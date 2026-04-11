@@ -455,10 +455,11 @@ function nav(view,el){
   var contentEl=document.getElementById('content');
   if(view==='deliverables'){
     contentEl.style.padding='0';
-    contentEl.style.overflow='hidden'; // del-scroll-zone handles both axes internally
+    contentEl.style.overflow='hidden'; // .content clips; del-scroll-zone scrolls internally
+    contentEl.style.overflowX='hidden'; // explicit: prevent double scrollbar on content
   } else {
     contentEl.style.padding='20px';
-    contentEl.style.overflowY='auto';
+    contentEl.style.overflow='auto'; // allow scroll in both axes for normal views
   }
   ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]&&
   ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]();
@@ -687,7 +688,8 @@ function loadDeliverables(){
     dt.innerHTML='';
     // Outer border container — must not clip the table
     var wrapper=document.createElement('div');
-    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);display:block;width:max-content;min-width:100%';
+    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:visible';
+    wrapper.style.minWidth=minW+'px';
     wrapper.innerHTML=html;
     dt.appendChild(wrapper);
     // ── Checkbox event listeners ──

@@ -455,7 +455,7 @@ function nav(view,el){
   var contentEl=document.getElementById('content');
   if(view==='deliverables'){
     contentEl.style.padding='0';
-    contentEl.style.overflowY='hidden';
+    contentEl.style.overflow='hidden'; // del-scroll-zone handles both axes internally
   } else {
     contentEl.style.padding='20px';
     contentEl.style.overflowY='auto';
@@ -687,7 +687,7 @@ function loadDeliverables(){
     dt.innerHTML='';
     // Outer border container — must not clip the table
     var wrapper=document.createElement('div');
-    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);display:inline-block;min-width:100%';
+    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);display:block;width:max-content;min-width:100%';
     wrapper.innerHTML=html;
     dt.appendChild(wrapper);
     // ── Checkbox event listeners ──

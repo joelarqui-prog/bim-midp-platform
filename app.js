@@ -329,6 +329,9 @@ function showApp(user){
   var phsBtn=document.getElementById('sb-phases');if(phsBtn)phsBtn.style.display=isAdminLvl?'flex':'none';
   var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdminLvl?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
+  var schBtn=document.getElementById('sb-schemas');if(schBtn)schBtn.style.display=isAdminLvl?'flex':'none';
+  // Also show sb-proj-info
+  var projInfo=document.getElementById('sb-proj-info');if(projInfo)projInfo.style.display='block';
   restoreSidebarState();
   nav('deliverables',document.querySelector('.sb-item'));
 }
@@ -4098,3 +4101,5 @@ function exportDeliverablesPDF(){
   win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
   toast('PDF listo para imprimir / guardar.');
 }
+
+function handleLogout(){doLogout();}

@@ -330,9 +330,15 @@ function showApp(user){
   var usrBtn=document.getElementById('sb-users');if(usrBtn)usrBtn.style.display=isAdminLvl?'flex':'none';
   var prjBtn=document.getElementById('sb-projects');if(prjBtn)prjBtn.style.display=isAdmin?'flex':'none';
   var schBtn=document.getElementById('sb-schemas');if(schBtn)schBtn.style.display=isAdminLvl?'flex':'none';
+  // Alcance submenus — all users can see Equipos and BIM Usos
+  var teamsBtn=document.getElementById('sb-teams');if(teamsBtn)teamsBtn.style.display='flex';
+  var bimusosBtn=document.getElementById('sb-bim-uses');if(bimusosBtn)bimusosBtn.style.display='flex';
+  var respBtn=document.getElementById('sb-resp-matrix');if(respBtn)respBtn.style.display='flex';
+  var loinBtn=document.getElementById('sb-loin-matrix');if(loinBtn)loinBtn.style.display='flex';
   // Also show sb-proj-info
   var projInfo=document.getElementById('sb-proj-info');if(projInfo)projInfo.style.display='block';
   restoreSidebarState();
+  restoreSbGroups();
   nav('deliverables',document.querySelector('.sb-item'));
 }
 
@@ -432,8 +438,28 @@ document.addEventListener('DOMContentLoaded',function(){
 
 
 // ── NAV ──
-var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables',phases:'Fases del proyecto'};
+var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables',phases:'Fases del proyecto',teams:'Equipos',bimusos:'Usos BIM',respmatrix:'Matriz de Responsabilidades',loinmatrix:'Matriz LOIN'};
 // ── SIDEBAR COLLAPSE ──
+function toggleSbGroup(groupId,btn){
+  var children=document.getElementById(groupId+'-children');
+  if(!children)return;
+  var isOpen=children.classList.contains('open');
+  children.classList.toggle('open',!isOpen);
+  btn.classList.toggle('open',!isOpen);
+  try{var s=JSON.parse(localStorage.getItem('midp_sb_groups')||'{}');s[groupId]=!isOpen;localStorage.setItem('midp_sb_groups',JSON.stringify(s));}catch(e){}
+}
+
+function restoreSbGroups(){
+  try{
+    var s=JSON.parse(localStorage.getItem('midp_sb_groups')||'{}');
+    Object.keys(s).forEach(function(gid){
+      var children=document.getElementById(gid+'-children');
+      var btn=document.querySelector('#'+gid+' .sb-group-header');
+      if(children){children.classList.toggle('open',s[gid]);if(btn)btn.classList.toggle('open',s[gid]);}
+    });
+  }catch(e){}
+}
+
 function toggleSidebar(){
   var sb=document.querySelector('.sidebar');
   if(!sb)return;
@@ -464,8 +490,8 @@ function nav(view,el){
     contentEl.style.overflow='auto';  // normal views scroll on content itself
     contentEl.style.overflowX='hidden';
   }
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]&&
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]();
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases,teams:renderTeams,bimusos:renderBimUsos,respmatrix:renderRespMatrix,loinmatrix:renderLoinMatrix})[view]&&
+  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases,teams:renderTeams,bimusos:renderBimUsos,respmatrix:renderRespMatrix,loinmatrix:renderLoinMatrix})[view]();
 }
 
 // ── DELIVERABLES ──
@@ -4103,3 +4129,437 @@ function exportDeliverablesPDF(){
 }
 
 function handleLogout(){doLogout();}
+
+// ══════════════════════════════════════════════════════════════
+// ── MENÚ ALCANCE ──
+// ══════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────
+// EQUIPOS
+// ─────────────────────────────────────────────────────────────
+function renderTeams(){
+  document.getElementById('topbar-actions').innerHTML=
+    isAdminLevel()?'<button class="btn btn-primary btn-sm" onclick="openTeamMemberModal()">+ Agregar miembro</button>':'';
+  document.getElementById('content').innerHTML=loading();
+
+  // Load project members with full user data
+  sbGet('project_members',
+    '?project_id=eq.'+APP.project.id+
+    '&select=id,user_id,role,permissions,users(id,full_name,email,role,specialty,company,is_active)'
+  ).then(function(members){
+    if(!members.length){
+      document.getElementById('content').innerHTML=
+        '<div class="empty"><div class="empty-icon">👥</div>'+
+        '<div class="empty-title">Sin miembros registrados</div>'+
+        '<div class="empty-desc">Agrega miembros del equipo con sus roles y disciplinas.</div></div>';
+      return;
+    }
+
+    // Group by company
+    var byCompany={};
+    members.forEach(function(m){
+      var u=m.users||{};
+      var company=u.company||'Sin empresa';
+      if(!byCompany[company])byCompany[company]=[];
+      byCompany[company].push(m);
+    });
+
+    var ROLE_LABELS={admin:'Administrador',project_admin:'Admin. Proyecto',bim_manager:'BIM Manager',specialist:'Especialista',member:'Miembro'};
+
+    var html='';
+    Object.entries(byCompany).forEach(function(entry){
+      var company=entry[0]; var items=entry[1];
+      html+='<div class="card" style="overflow:hidden;margin-bottom:16px">'+
+        '<div style="padding:10px 16px;background:var(--brand-light);border-bottom:1px solid var(--border2);display:flex;align-items:center;gap:8px">'+
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>'+
+        '<span style="font-size:12px;font-weight:700;color:var(--brand)">'+company+'</span>'+
+        '<span style="font-size:10px;color:var(--text3);margin-left:4px">'+items.length+' miembro'+(items.length>1?'s':'')+'</span>'+
+        '</div>'+
+        '<table class="tbl"><thead><tr>'+
+        '<th>Nombre</th><th>Correo</th><th>Disciplina / Especialidad</th>'+
+        '<th>Rol en plataforma</th><th>Rol en proyecto</th><th>Estado</th>'+
+        (isAdminLevel()?'<th style="text-align:right">Acciones</th>':'')+
+        '</tr></thead><tbody>'+
+        items.map(function(m){
+          var u=m.users||{};
+          var pmRole=m.role||'member';
+          var isMe=m.user_id===APP.user.id;
+          return '<tr>'+
+            '<td><div style="font-weight:600;color:var(--text)">'+u.full_name+
+            (isMe?' <span style="font-size:9px;background:#eff6ff;color:var(--brand);padding:1px 5px;border-radius:10px">Tú</span>':'')+
+            '</div></td>'+
+            '<td style="font-size:11px;color:var(--text3)">'+u.email+'</td>'+
+            '<td>'+(u.specialty?'<span class="badge b-progress" style="font-size:10px">'+u.specialty+'</span>':'<span style="color:var(--text3);font-size:11px">--</span>')+'</td>'+
+            '<td>'+roleBadge(u.role)+'</td>'+
+            '<td><span class="badge '+(pmRole==='project_admin'?'b-proj-admin':pmRole==='bim_manager'?'b-bim':'b-spec')+'" style="font-size:10px">'+
+            (ROLE_LABELS[pmRole]||pmRole)+'</span></td>'+
+            '<td>'+(u.is_active?'<span class="badge b-approved" style="font-size:10px">Activo</span>':'<span class="badge b-rejected" style="font-size:10px">Inactivo</span>')+'</td>'+
+            (isAdminLevel()?'<td style="text-align:right">'+
+              '<button class="btn btn-ghost btn-sm" onclick="nav(\'users\',document.getElementById(\'sb-users\'))" title="Gestionar permisos">Permisos</button>'+
+              '</td>':'')+
+            '</tr>';
+        }).join('')+
+        '</tbody></table></div>';
+    });
+
+    document.getElementById('content').innerHTML=html;
+  }).catch(function(e){
+    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+  });
+}
+
+function openTeamMemberModal(){
+  // Reuse the project members modal from renderProjects
+  openProjectMembersModal(APP.project.id);
+}
+
+// ─────────────────────────────────────────────────────────────
+// USOS BIM — Guía Nacional BIM Perú 2023
+// ─────────────────────────────────────────────────────────────
+var BIM_USOS=[
+  {id:'U01',cat:'Planificación',name:'Levantamiento de condiciones existentes'},
+  {id:'U02',cat:'Planificación',name:'Estimación de costos'},
+  {id:'U03',cat:'Planificación',name:'Planificación de fases del proyecto'},
+  {id:'U04',cat:'Diseño',name:'Revisión del programa (brief)'},
+  {id:'U05',cat:'Diseño',name:'Análisis del lugar'},
+  {id:'U06',cat:'Diseño',name:'Revisión del diseño'},
+  {id:'U07',cat:'Diseño',name:'Análisis de ingeniería estructural'},
+  {id:'U08',cat:'Diseño',name:'Análisis de sistemas MEP'},
+  {id:'U09',cat:'Diseño',name:'Análisis de eficiencia energética'},
+  {id:'U10',cat:'Diseño',name:'Análisis lumínico'},
+  {id:'U11',cat:'Diseño',name:'Análisis acústico'},
+  {id:'U12',cat:'Diseño',name:'Análisis hidráulico y de drenaje'},
+  {id:'U13',cat:'Diseño',name:'Coordinación 3D / Detección de interferencias (Clash Detection)'},
+  {id:'U14',cat:'Diseño',name:'Planificación para construcción / Constructibilidad'},
+  {id:'U15',cat:'Construcción',name:'Elaboración de presupuesto detallado'},
+  {id:'U16',cat:'Construcción',name:'Diseño del sistema de construcción (métodos constructivos)'},
+  {id:'U17',cat:'Construcción',name:'Planificación 4D (Gestión de cronograma)'},
+  {id:'U18',cat:'Construcción',name:'Seguimiento del proceso constructivo'},
+  {id:'U19',cat:'Construcción',name:'Control y calidad de la construcción'},
+  {id:'U20',cat:'Construcción',name:'Gestión de materiales y logística'},
+  {id:'U21',cat:'Construcción',name:'Modelado As-Built (As-Constructed)'},
+  {id:'U22',cat:'Operación',name:'Planificación del mantenimiento'},
+  {id:'U23',cat:'Operación',name:'Gestión de activos (Asset Management)'},
+  {id:'U24',cat:'Operación',name:'Gestión del espacio y mobiliario'},
+  {id:'U25',cat:'Operación',name:'Análisis de sistemas constructivos'},
+  {id:'U26',cat:'Operación',name:'Gestión de emergencias y desastres'},
+  {id:'U27',cat:'Operación',name:'Gestión de residuos y demolición'}
+];
+
+var CAT_COLORS={
+  'Planificación':'#3B6FE8',
+  'Diseño':'#10B981',
+  'Construcción':'#F59E0B',
+  'Operación':'#8B5CF6'
+};
+
+function renderBimUsos(){
+  document.getElementById('topbar-actions').innerHTML=
+    isAdminLevel()?'<button class="btn btn-sm" onclick="saveBimUsos()">💾 Guardar</button>':'';
+  document.getElementById('content').innerHTML=loading();
+
+  var phases=getProjectPhases();
+  if(!phases.length){
+    document.getElementById('content').innerHTML=
+      '<div class="empty"><div class="empty-icon">🗓️</div>'+
+      '<div class="empty-title">Sin fases configuradas</div>'+
+      '<div class="empty-desc">Configura las fases del proyecto en el menú <strong>Fases</strong> antes de definir los Usos BIM.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'phases\',document.getElementById(\'sb-phases\'))">→ Ir a Fases</button>':'')+
+      '</div>';
+    return;
+  }
+
+  // Load saved selections from localStorage
+  var saved=getBimUsosSaved();
+
+  // Group usos by category
+  var cats=['Planificación','Diseño','Construcción','Operación'];
+
+  var phaseHeaders=phases.map(function(ph){
+    return '<th style="text-align:center;min-width:90px;background:'+ph.color+'20;color:'+ph.color+';border-bottom:2px solid '+ph.color+'">'+
+      ph.name+(ph.sub_label?'<div style="font-size:9px;font-weight:400;opacity:.8">'+ph.sub_label+'</div>':'')+
+      '</th>';
+  }).join('');
+
+  var rows='';
+  cats.forEach(function(cat){
+    var usos=BIM_USOS.filter(function(u){return u.cat===cat;});
+    var catColor=CAT_COLORS[cat]||'var(--brand)';
+    // Category header row
+    rows+='<tr><td colspan="'+(3+phases.length)+'" style="background:'+catColor+'15;padding:6px 12px;font-size:11px;font-weight:700;color:'+catColor+';border-left:3px solid '+catColor+'">'+cat.toUpperCase()+'</td></tr>';
+    usos.forEach(function(uso){
+      rows+='<tr>'+
+        '<td style="font-size:10px;font-family:monospace;color:var(--text3);width:44px">'+uso.id+'</td>'+
+        '<td style="font-size:11px;font-weight:600;color:var(--text);padding:6px 8px">'+uso.name+'</td>'+
+        '<td style="text-align:center;width:36px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+catColor+'"></span></td>'+
+        phases.map(function(ph){
+          var key=uso.id+'__'+ph.id;
+          var checked=!!(saved[key]);
+          return '<td style="text-align:center;padding:6px 4px">'+
+            (isAdminLevel()?
+              '<input type="checkbox" class="bim-uso-chk" data-key="'+key+'" style="width:16px;height:16px;cursor:pointer;accent-color:'+ph.color+'"'+(checked?' checked':'')+'>':
+              (checked?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+ph.color+'" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>'))+
+            '</td>';
+        }).join('')+
+        '</tr>';
+    });
+  });
+
+  document.getElementById('content').innerHTML=
+    '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--brand)">'+
+    '📋 Selecciona los <strong>Usos BIM aplicables</strong> para cada fase del proyecto según la Guía Nacional BIM Perú 2023'+
+    '</div>'+
+    '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
+    '<table class="midp-tbl" style="width:100%;border-collapse:collapse">'+
+    '<thead><tr>'+
+    '<th style="width:44px">ID</th>'+
+    '<th>Uso BIM</th>'+
+    '<th style="width:36px">Cat.</th>'+
+    phaseHeaders+
+    '</tr></thead>'+
+    '<tbody>'+rows+'</tbody>'+
+    '</table></div>'+
+    '<div style="font-size:10px;color:var(--text3);margin-top:8px">'+BIM_USOS.length+' usos BIM de la Guía Nacional BIM Perú 2023</div>';
+}
+
+function getBimUsosSaved(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return {};
+  try{return JSON.parse(localStorage.getItem('midp_bimusos_'+pid)||'{}');}catch(e){return {};}
+}
+
+function saveBimUsos(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return;
+  var data={};
+  document.querySelectorAll('.bim-uso-chk').forEach(function(chk){
+    if(chk.checked)data[chk.dataset.key]=true;
+  });
+  try{localStorage.setItem('midp_bimusos_'+pid,JSON.stringify(data));}catch(e){}
+  toast('Usos BIM guardados.');
+}
+
+// ─────────────────────────────────────────────────────────────
+// MATRIZ DE RESPONSABILIDADES
+// ─────────────────────────────────────────────────────────────
+function renderRespMatrix(){
+  document.getElementById('topbar-actions').innerHTML=
+    isAdminLevel()?'<button class="btn btn-sm" onclick="saveRespMatrix()">💾 Guardar</button>':'';
+  document.getElementById('content').innerHTML=loading();
+
+  if(!APP.packages.length){
+    document.getElementById('content').innerHTML=
+      '<div class="empty"><div class="empty-icon">📦</div>'+
+      '<div class="empty-title">Sin paquetes registrados</div>'+
+      '<div class="empty-desc">Registra paquetes de trabajo en el menú <strong>Paquetes</strong> para construir la Matriz de Responsabilidades.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'packages\',document.getElementById(\'sb-packages\'))">→ Ir a Paquetes</button>':'')+
+      '</div>';
+    return;
+  }
+
+  var members=(APP.projectMembers||[]).map(function(m){return m.users||{};}).filter(function(u){return u.full_name;});
+  var LOD_OPTS=['','LOD 100','LOD 200','LOD 300','LOD 350','LOD 400','LOD 500'];
+  var LOI_OPTS=['','LOI 1','LOI 2','LOI 3','LOI 4'];
+
+  var saved=getRespMatrixSaved();
+
+  // Group packages by discipline
+  var byDisc={};
+  APP.packages.forEach(function(p){
+    var disc=p.discipline||'Sin disciplina';
+    if(!byDisc[disc])byDisc[disc]=[];
+    byDisc[disc].push(p);
+  });
+
+  var memberHeaders=members.length?
+    members.map(function(u){
+      return '<th style="min-width:100px;text-align:center;font-size:10px">'+
+        '<div style="font-weight:600">'+u.full_name+'</div>'+
+        (u.specialty?'<div style="font-size:9px;color:var(--text3);font-weight:400">'+u.specialty+'</div>':'')+
+        '</th>';
+    }).join(''):
+    '<th>Sin miembros</th>';
+
+  var rows='';
+  Object.entries(byDisc).forEach(function(entry){
+    var disc=entry[0]; var pkgs=entry[1];
+    var discColor=codeSchemas().find(function(s){return s.key==='disciplina'&&s.allowed_values;})||null;
+    rows+='<tr><td colspan="'+(4+Math.max(members.length,1))+'" style="background:var(--brand-light);padding:6px 12px;font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+disc+'</td></tr>';
+    pkgs.forEach(function(p){
+      var rKey='resp__'+p.id;
+      var lodKey='lod__'+p.id;
+      var loiKey='loi__'+p.id;
+      var respVal=saved[rKey]||'';
+      var lodVal=saved[lodKey]||'';
+      var loiVal=saved[loiKey]||'';
+
+      rows+='<tr>'+
+        '<td><span class="code-chip" style="font-size:9px">'+p.code+'</span></td>'+
+        '<td style="font-size:11px;font-weight:600;color:var(--text)">'+p.name+'</td>'+
+        '<td style="min-width:80px">'+
+        (isAdminLevel()?
+          '<select class="input" style="font-size:10px;padding:3px 6px" data-matrix-key="'+lodKey+'">'+
+          LOD_OPTS.map(function(v){return '<option value="'+v+'"'+(v===lodVal?' selected':'')+'>'+v+'</option>';}).join('')+
+          '</select>':'<span style="font-size:11px">'+(lodVal||'--')+'</span>')+
+        '</td>'+
+        '<td style="min-width:80px">'+
+        (isAdminLevel()?
+          '<select class="input" style="font-size:10px;padding:3px 6px" data-matrix-key="'+loiKey+'">'+
+          LOI_OPTS.map(function(v){return '<option value="'+v+'"'+(v===loiVal?' selected':'')+'>'+v+'</option>';}).join('')+
+          '</select>':'<span style="font-size:11px">'+(loiVal||'--')+'</span>')+
+        '</td>'+
+        (members.length?members.map(function(u){
+          var mKey='member__'+p.id+'__'+u.id;
+          var roles=['','Responsable (R)','Aprueba (A)','Consultado (C)','Informado (I)'];
+          var mVal=saved[mKey]||'';
+          var mLetter=mVal?mVal.charAt(0):'';
+          var mColor={R:'var(--brand)',A:'var(--green)',C:'var(--amber)',I:'var(--text3)'}[mLetter]||'var(--text3)';
+          return '<td style="text-align:center;min-width:100px">'+
+            (isAdminLevel()?
+              '<select class="input" style="font-size:10px;padding:3px 6px;text-align:center" data-matrix-key="'+mKey+'">'+
+              roles.map(function(v){return '<option value="'+v+'"'+(v===mVal?' selected':'')+'>'+v+'</option>';}).join('')+
+              '</select>':
+              (mLetter?'<span style="font-size:13px;font-weight:700;color:'+mColor+'">'+mLetter+'</span>':'<span style="color:var(--border2)">·</span>'))+
+            '</td>';
+        }).join(''):'<td>--</td>')+
+        '</tr>';
+    });
+  });
+
+  document.getElementById('content').innerHTML=
+    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#15803d">'+
+    'R = Responsable · A = Aprueba · C = Consultado · I = Informado'+
+    '</div>'+
+    '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
+    '<table class="midp-tbl" style="width:100%;border-collapse:collapse">'+
+    '<thead><tr>'+
+    '<th>Código</th><th>Paquete</th><th style="min-width:80px">LOD</th><th style="min-width:80px">LOI</th>'+
+    memberHeaders+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+function getRespMatrixSaved(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return {};
+  try{return JSON.parse(localStorage.getItem('midp_respmatrix_'+pid)||'{}');}catch(e){return {};}
+}
+
+function saveRespMatrix(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return;
+  var data={};
+  document.querySelectorAll('[data-matrix-key]').forEach(function(el){
+    if(el.value)data[el.dataset.matrixKey]=el.value;
+  });
+  try{localStorage.setItem('midp_respmatrix_'+pid,JSON.stringify(data));}catch(e){}
+  toast('Matriz de responsabilidades guardada.');
+}
+
+// ─────────────────────────────────────────────────────────────
+// MATRIZ LOIN
+// ─────────────────────────────────────────────────────────────
+function renderLoinMatrix(){
+  document.getElementById('topbar-actions').innerHTML=
+    isAdminLevel()?'<button class="btn btn-sm" onclick="saveLoinMatrix()">💾 Guardar</button>':'';
+  document.getElementById('content').innerHTML=loading();
+
+  var phases=getProjectPhases();
+  if(!phases.length){
+    document.getElementById('content').innerHTML=
+      '<div class="empty"><div class="empty-icon">🗓️</div>'+
+      '<div class="empty-title">Sin fases configuradas</div>'+
+      '<div class="empty-desc">Configura las fases del proyecto antes de construir la Matriz LOIN.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'phases\',document.getElementById(\'sb-phases\'))">→ Ir a Fases</button>':'')+
+      '</div>';
+    return;
+  }
+  if(!APP.packages.length){
+    document.getElementById('content').innerHTML=
+      '<div class="empty"><div class="empty-icon">📦</div>'+
+      '<div class="empty-title">Sin paquetes registrados</div>'+
+      '<div class="empty-desc">Registra paquetes de trabajo en el menú Paquetes.</div></div>';
+    return;
+  }
+
+  var saved=getLoinMatrixSaved();
+  var LOD_OPTS=['','100','200','300','350','400','500'];
+  var LOI_OPTS=['','1','2','3','4'];
+
+  // Group packages by discipline
+  var byDisc={};
+  APP.packages.forEach(function(p){
+    var disc=p.discipline||'Sin disciplina';
+    if(!byDisc[disc])byDisc[disc]=[];
+    byDisc[disc].push(p);
+  });
+
+  // Phase headers — 2 sub-columns per phase: LOD and LOI
+  var phaseHeaders=phases.map(function(ph){
+    return '<th colspan="2" style="text-align:center;background:'+ph.color+'20;color:'+ph.color+';border-bottom:2px solid '+ph.color+';font-size:11px">'+
+      ph.name+(ph.sub_label?'<div style="font-size:9px;opacity:.8">'+ph.sub_label+'</div>':'')+
+      '</th>';
+  }).join('');
+
+  var phaseSubHeaders=phases.map(function(ph){
+    return '<th style="text-align:center;background:'+ph.color+'10;font-size:9px;color:var(--text3);min-width:56px">LOD</th>'+
+           '<th style="text-align:center;background:'+ph.color+'10;font-size:9px;color:var(--text3);min-width:56px">LOI</th>';
+  }).join('');
+
+  var rows='';
+  Object.entries(byDisc).forEach(function(entry){
+    var disc=entry[0]; var pkgs=entry[1];
+    rows+='<tr><td colspan="'+(2+phases.length*2)+'" style="background:var(--brand-light);padding:6px 12px;font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+disc+'</td></tr>';
+    pkgs.forEach(function(p){
+      rows+='<tr>'+
+        '<td><span class="code-chip" style="font-size:9px">'+p.code+'</span></td>'+
+        '<td style="font-size:11px;font-weight:600;color:var(--text);min-width:180px">'+p.name+'</td>'+
+        phases.map(function(ph){
+          var lodKey='lod__'+p.id+'__'+ph.id;
+          var loiKey='loi__'+p.id+'__'+ph.id;
+          var lodVal=saved[lodKey]||'';
+          var loiVal=saved[loiKey]||'';
+          return (isAdminLevel()?
+            '<td style="text-align:center;padding:4px">'+
+            '<select class="input" style="font-size:10px;padding:2px 4px;width:60px;text-align:center" data-loin-key="'+lodKey+'">'+
+            LOD_OPTS.map(function(v){return '<option value="'+v+'"'+(v===lodVal?' selected':'')+'>LOD'+v+'</option>';}).join('')+
+            '</select></td>'+
+            '<td style="text-align:center;padding:4px">'+
+            '<select class="input" style="font-size:10px;padding:2px 4px;width:56px;text-align:center" data-loin-key="'+loiKey+'">'+
+            LOI_OPTS.map(function(v){return '<option value="'+v+'"'+(v===loiVal?' selected':'')+'>LOI'+v+'</option>';}).join('')+
+            '</select></td>':
+            '<td style="text-align:center;font-size:11px;font-weight:700;color:var(--brand)">'+( lodVal?'LOD'+lodVal:'--')+'</td>'+
+            '<td style="text-align:center;font-size:11px;color:var(--text2)">'+( loiVal?'LOI'+loiVal:'--')+'</td>');
+        }).join('')+
+        '</tr>';
+    });
+  });
+
+  document.getElementById('content').innerHTML=
+    '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--brand)">'+
+    'Define el <strong>Level of Detail (LOD)</strong> y <strong>Level of Information (LOI)</strong> para cada paquete por fase de proyecto'+
+    '</div>'+
+    '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
+    '<table class="midp-tbl" style="border-collapse:collapse">'+
+    '<thead>'+
+    '<tr><th rowspan="2">Código</th><th rowspan="2" style="min-width:180px">Paquete de trabajo</th>'+phaseHeaders+'</tr>'+
+    '<tr>'+phaseSubHeaders+'</tr>'+
+    '</thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+function getLoinMatrixSaved(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return {};
+  try{return JSON.parse(localStorage.getItem('midp_loinmatrix_'+pid)||'{}');}catch(e){return {};}
+}
+
+function saveLoinMatrix(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return;
+  var data={};
+  document.querySelectorAll('[data-loin-key]').forEach(function(el){
+    if(el.value)data[el.dataset.loinKey]=el.value;
+  });
+  try{localStorage.setItem('midp_loinmatrix_'+pid,JSON.stringify(data));}catch(e){}
+  toast('Matriz LOIN guardada.');
+}

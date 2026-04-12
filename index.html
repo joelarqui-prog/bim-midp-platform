@@ -154,18 +154,18 @@ textarea.input{resize:vertical;min-height:70px}
 </div>
 
 <!-- PROJECT SELECTOR -->
-<div id="project-selector" style="display:none">
+<div id="project-selector" style="display:none;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0f172a,#1e3a5f)">
   <div class="ps-card">
     <div class="l-logo" style="margin-bottom:20px">
       <svg width="32" height="32" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="10" fill="#1B3A6B"/><path d="M8 26V10l7 10 7-10v16" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="10" r="3.5" fill="#2E86C1"/><circle cx="28" cy="18" r="3.5" fill="#10B981"/><circle cx="28" cy="26" r="3.5" fill="#F59E0B"/></svg>
-      <div><div class="l-logo-title">Unify Management</div><div class="l-logo-sub">Selecciona un proyecto</div></div>
+      <div><div class="l-logo-title" style="color:white">Unify Management</div><div class="l-logo-sub">Selecciona un proyecto</div></div>
     </div>
-    <div id="ps-user-info" style="margin-bottom:16px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--text2)"></div>
-    <div id="project-list"><div class="loading"><div class="spinner"></div></div></div>
-    <div id="ps-new-project" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-      <button class="btn btn-primary btn-sm" style="width:100%" onclick="openNewProjectModal()">+ Nuevo proyecto</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:rgba(255,255,255,.07);border-radius:8px">
+      <div class="sb-avatar" id="ps-avatar" style="width:36px;height:36px;font-size:13px;flex-shrink:0">AM</div>
+      <div><div id="ps-name" style="font-weight:600;color:white;font-size:13px">—</div><div id="ps-email" style="font-size:11px;color:rgba(255,255,255,.5)">—</div></div>
     </div>
-    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;font-size:11px" onclick="handleLogout()">Cerrar sesión</button>
+    <div id="ps-projects"><div class="loading"><div class="spinner"></div></div></div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:12px;font-size:11px;color:rgba(255,255,255,.4)" onclick="handleLogout()">Cerrar sesión</button>
   </div>
 </div>
 
@@ -206,8 +206,8 @@ textarea.input{resize:vertical;min-height:70px}
         <div class="sb-user" id="sb-user-info">
           <div class="sb-avatar" id="sb-avatar">AM</div>
           <div class="sb-user-detail">
-            <div class="sb-user-name" id="sb-user-name">—</div>
-            <div class="sb-user-role" id="sb-user-role">—</div>
+            <div class="sb-user-name" id="sb-uname">—</div>
+            <div class="sb-user-role"><span class="badge b-spec" id="sb-role-badge">—</span></div>
           </div>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="width:100%;margin-top:6px;font-size:10px;color:var(--text3)">&#8594; Cerrar sesion</button>
@@ -235,6 +235,9 @@ textarea.input{resize:vertical;min-height:70px}
 <div id="modal-container"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="app.js?v=1775973710"></script>
+<script src="app.js?v=1775974442"></script>
 </body>
 </html>
+
+</style>
+</head>

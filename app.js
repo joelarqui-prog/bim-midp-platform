@@ -2138,37 +2138,54 @@ function loadPackages(){
         el.innerHTML='<div class="card"><div class="empty"><div class="empty-title">Sin paquetes</div><div class="empty-desc">Crea el primero con + Nuevo paquete.</div></div></div>';
         return;
       }
-      var rows=pkgs.map(function(p){
-        var tr=document.createElement('tr');
-        tr.innerHTML=
+      // Build as HTML string using data-* attributes — no outerHTML event loss
+      var rowsHtml=pkgs.map(function(p){
+        var lodVal=p.lod||(p.options&&p.options.lod)||'--';
+        var loiVal=p.loi||(p.options&&p.options.loi)||'--';
+        return '<tr data-pkg-id="'+p.id+'" data-pkg-name="'+p.name.replace(/"/g,'&quot;')+'">'+
           '<td><span class="code-chip">'+p.code+'</span></td>'+
           '<td style="font-weight:600;color:var(--text)">'+p.name+'</td>'+
-          '<td style="font-size:11px;color:var(--text3);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.description||'--')+'</td>'+
+          '<td style="font-size:11px;color:var(--text3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.description||'--')+'</td>'+
           '<td>'+(p.discipline?'<span class="badge b-progress">'+p.discipline+'</span>':'--')+'</td>'+
           '<td style="font-size:11px">'+(p.responsible||'--')+'</td>'+
+          '<td style="text-align:center;font-weight:700;color:var(--brand);font-size:11px">'+(p.lod||'--')+'</td>'+
+          '<td style="text-align:center;font-weight:700;color:var(--brand);font-size:11px">'+(p.loi||'--')+'</td>'+
           '<td style="font-size:11px">'+(p.start_date?new Date(p.start_date).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}):'--')+'</td>'+
           '<td style="font-size:11px">'+(p.end_date?new Date(p.end_date).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}):'--')+'</td>'+
-          '<td></td>';
-        var btnEdit=document.createElement('button');btnEdit.className='btn btn-ghost btn-sm';
-        btnEdit.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-        btnEdit.onclick=(function(pid){return function(){openPackageModal(pid);};})(p.id);
-        var btnDel=document.createElement('button');btnDel.className='btn btn-ghost btn-sm';btnDel.style.color='var(--red)';
-        btnDel.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
-        btnDel.onclick=(function(pid,pname){return function(){confirmDeletePackage(pid,pname);};})(p.id,p.name);
-        var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:4px;justify-content:flex-end';
-        wrap.appendChild(btnEdit);wrap.appendChild(btnDel);
-        tr.lastElementChild.appendChild(wrap);
-        return tr.outerHTML;
+          '<td><div style="display:flex;gap:4px;justify-content:flex-end">'+
+          '<button class="btn btn-ghost btn-sm pkg-edit-btn" data-id="'+p.id+'" title="Editar">'+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'+
+          '</button>'+
+          '<button class="btn btn-ghost btn-sm pkg-del-btn" data-id="'+p.id+'" data-name="'+p.name.replace(/"/g,'&quot;')+'" style="color:var(--red)" title="Eliminar">'+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'+
+          '</button>'+
+          '</div></td></tr>';
       }).join('');
       el.innerHTML='<div class="card" style="overflow:hidden"><table class="tbl"><thead><tr>'+
-        '<th>Codigo</th><th>Nombre</th><th>Descripcion</th><th>Disciplina</th>'+
-        '<th>Responsable</th><th>Inicio</th><th>Fin</th><th style="text-align:right">Acciones</th>'+
-        '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+        '<th>Código</th><th>Nombre</th><th>Descripción</th><th>Disciplina</th>'+
+        '<th>Responsable</th>'+
+        '<th style="text-align:center">LOD</th><th style="text-align:center">LOI</th>'+
+        '<th>Inicio</th><th>Fin</th><th style="text-align:right">Acciones</th>'+
+        '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+      // Attach listeners after innerHTML
+      document.querySelectorAll('.pkg-edit-btn').forEach(function(btn){
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          openPackageModal(btn.dataset.id);
+        });
+      });
+      document.querySelectorAll('.pkg-del-btn').forEach(function(btn){
+        btn.addEventListener('click',function(e){
+          e.stopPropagation();
+          confirmDeletePackage(btn.dataset.id,btn.dataset.name);
+        });
+      });
     }).catch(function(e){
       var el=document.getElementById('pkg-list');
       if(el)el.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
     });
 }
+
 
 function openPackageModal(pid){
   // Always fetch fresh from DB to avoid stale APP.packages cache
@@ -2199,6 +2216,16 @@ function openPackageModal(pid){
     '<select class="input" id="pkg-disc">'+discOpts+'</select></div>'+
     '<div class="form-group"><label class="label">Responsable</label>'+
     '<input type="text" class="input" id="pkg-resp" value="'+(p?p.responsible||'':'')+'"></div>'+
+    '<div class="form-group"><label class="label">LOD <span style="font-size:9px;color:var(--text3)">Nivel de Desarrollo</span></label>'+
+    '<select class="input" id="pkg-lod">'+
+    '<option value="">Sin LOD</option>'+
+    ['LOD 100','LOD 200','LOD 300','LOD 350','LOD 400','LOD 500'].map(function(v){return '<option value="'+v+'"'+(p&&p.lod===v?' selected':'')+'>'+v+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="form-group"><label class="label">LOI <span style="font-size:9px;color:var(--text3)">Nivel de Información</span></label>'+
+    '<select class="input" id="pkg-loi">'+
+    '<option value="">Sin LOI</option>'+
+    ['LOI 1','LOI 2','LOI 3','LOI 4'].map(function(v){return '<option value="'+v+'"'+(p&&p.loi===v?' selected':'')+'>'+v+'</option>';}).join('')+
+    '</select></div>'+
     '<div class="form-group"><label class="label">Fecha inicio</label>'+
     '<input type="date" class="input" id="pkg-start" value="'+(p?p.start_date||'':'')+'"></div>'+
     '<div class="form-group"><label class="label">Fecha fin</label>'+
@@ -2208,10 +2235,13 @@ function openPackageModal(pid){
     '<button class="btn" id="pkg-cancel-btn">Cancelar</button>'+
     '<button class="btn btn-primary" id="pkg-save-btn">'+(p?'Actualizar paquete':'Crear paquete')+'</button>'+
     '</div></div>';
+  // Remove existing pkg-modal first to avoid duplicates
+  var existingPkg=document.getElementById('pkg-modal');
+  if(existingPkg)existingPkg.remove();
   document.getElementById('modal-container').appendChild(overlay);
-  document.getElementById('pkg-close-btn').onclick=function(){closeModal('pkg-modal');};
-  document.getElementById('pkg-cancel-btn').onclick=function(){closeModal('pkg-modal');};
-  document.getElementById('pkg-save-btn').onclick=function(){savePackage(pid||null);};
+  overlay.querySelector('#pkg-close-btn').onclick=function(){overlay.remove();};
+  overlay.querySelector('#pkg-cancel-btn').onclick=function(){overlay.remove();};
+  overlay.querySelector('#pkg-save-btn').onclick=function(){savePackage(pid||null);};
   }); // end fetchP.then
 }
 
@@ -2225,6 +2255,8 @@ function savePackage(pid){
     description:document.getElementById('pkg-desc').value||null,
     discipline:document.getElementById('pkg-disc').value||null,
     responsible:document.getElementById('pkg-resp').value||null,
+    lod:document.getElementById('pkg-lod')?document.getElementById('pkg-lod').value||null:null,
+    loi:document.getElementById('pkg-loi')?document.getElementById('pkg-loi').value||null:null,
     start_date:document.getElementById('pkg-start').value||null,
     end_date:document.getElementById('pkg-end').value||null};
   var req=pid?sbPatch('packages','id=eq.'+pid,payload):sbPost('packages',payload);

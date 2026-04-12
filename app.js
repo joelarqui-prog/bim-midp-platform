@@ -2246,26 +2246,38 @@ function openPackageModal(pid){
 }
 
 function savePackage(pid){
-  var btn=document.getElementById('pkg-save-btn');
-  var code=document.getElementById('pkg-code').value.trim().toUpperCase();
-  var name=document.getElementById('pkg-name').value.trim();
+  // Use overlay reference to avoid getElementById failing after modal removal
+  var overlay=document.getElementById('pkg-modal');
+  var btn=overlay?overlay.querySelector('#pkg-save-btn'):document.getElementById('pkg-save-btn');
+  if(!btn)return;
+  var code=(overlay?overlay.querySelector('#pkg-code'):document.getElementById('pkg-code')).value.trim().toUpperCase();
+  var name=(overlay?overlay.querySelector('#pkg-name'):document.getElementById('pkg-name')).value.trim();
   if(!code||!name){toast('Codigo y nombre son obligatorios.','error');return;}
   btn.disabled=true;btn.textContent='Guardando...';
+  // Helper to safely get value from field
+  function gv(id){var el=overlay?overlay.querySelector('#'+id):document.getElementById(id);return el?el.value||null:null;}
   var payload={project_id:APP.project.id,code:code,name:name,
-    description:document.getElementById('pkg-desc').value||null,
-    discipline:document.getElementById('pkg-disc').value||null,
-    responsible:document.getElementById('pkg-resp').value||null,
-    lod:document.getElementById('pkg-lod')?document.getElementById('pkg-lod').value||null:null,
-    loi:document.getElementById('pkg-loi')?document.getElementById('pkg-loi').value||null:null,
-    start_date:document.getElementById('pkg-start').value||null,
-    end_date:document.getElementById('pkg-end').value||null};
+    description:gv('pkg-desc'),
+    discipline:gv('pkg-disc'),
+    responsible:gv('pkg-resp'),
+    start_date:gv('pkg-start'),
+    end_date:gv('pkg-end')};
+  // Add lod/loi only if fields exist in the form
+  var lodEl=overlay?overlay.querySelector('#pkg-lod'):document.getElementById('pkg-lod');
+  var loiEl=overlay?overlay.querySelector('#pkg-loi'):document.getElementById('pkg-loi');
+  if(lodEl)payload.lod=lodEl.value||null;
+  if(loiEl)payload.loi=loiEl.value||null;
   var req=pid?sbPatch('packages','id=eq.'+pid,payload):sbPost('packages',payload);
   req.then(function(){
-    toast(pid?'Paquete actualizado.':'Paquete creado.');closeModal('pkg-modal');
+    toast(pid?'Paquete actualizado.':'Paquete creado.');
+    if(overlay)overlay.remove();else closeModal('pkg-modal');
     sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
       .then(function(pkgs){APP.packages=pkgs;}).catch(function(){});
     loadPackages();
-  }).catch(function(e){toast(e.message,'error');btn.disabled=false;btn.textContent=pid?'Actualizar':'Crear paquete';});
+  }).catch(function(e){
+    toast(e.message,'error');
+    if(btn){btn.disabled=false;btn.textContent=pid?'Actualizar paquete':'Crear paquete';}
+  });
 }
 
 function confirmDeletePackage(pid,pname){

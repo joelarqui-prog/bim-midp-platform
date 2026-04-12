@@ -455,11 +455,11 @@ function nav(view,el){
   var contentEl=document.getElementById('content');
   if(view==='deliverables'){
     contentEl.style.padding='0';
-    contentEl.style.overflow='hidden'; // .content clips; del-scroll-zone scrolls internally
-    contentEl.style.overflowX='hidden'; // explicit: prevent double scrollbar on content
+    contentEl.style.overflow='hidden'; // del-scroll-zone is the scroll container — content just clips
   } else {
     contentEl.style.padding='20px';
-    contentEl.style.overflow='auto'; // allow scroll in both axes for normal views
+    contentEl.style.overflow='auto';  // normal views scroll on content itself
+    contentEl.style.overflowX='hidden';
   }
   ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]&&
   ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases})[view]();
@@ -470,8 +470,11 @@ function renderDeliverables(){
   var canCreate=can('can_create_deliverables');
   var canEdit=can('can_edit_deliverables');
   document.getElementById('topbar-actions').innerHTML=
+    '<button class="btn btn-sm" onclick="exportDeliverablesPDF()">&#8659; PDF</button>'+
+    '<button class="btn btn-sm" onclick="exportDeliverablesPDF()">&#8659; PDF</button>'+
     '<button class="btn btn-sm" onclick="exportCSV()">&#8595; CSV</button>'+
     '<button class="btn btn-sm" onclick="exportMIDP()">&#8595; MIDP</button>'+
+    '<button class="btn btn-sm" onclick="exportDeliverablesPDF()">&#8659; PDF</button>'+
     (canCreate?'<button class="btn btn-sm" onclick="downloadDelTemplate()">&#8659; Plantilla</button>':'')+
     (canCreate?'<button class="btn btn-sm" onclick="importDeliverables()">&#8593; Importar</button>':'')+
     
@@ -541,7 +544,8 @@ function loadDeliverables(){
     sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&select=status'),
     sbGet('production_units','?select=deliverable_id,planned_qty,consumed_qty').catch(function(){return[];})
   ]).then(function(res){
-    var items=res[0];var allSt=res[1];var prod=res[2];
+    var items=res[0];window._lastDeliverables=items;
+    var allSt=res[1];var prod=res[2];
     var total=allSt.length;
     var completed=allSt.filter(function(d){return d.status==='approved'||d.status==='issued';}).length;
     var inprog=allSt.filter(function(d){return d.status==='in_progress';}).length;
@@ -585,7 +589,7 @@ function loadDeliverables(){
     var stickyLeft2=(canEdit?W.chk:0)+W.code; // where Name starts
 
     // Calcular min-width de la tabla basado en columnas
-    var minW = W.code + W.name + W.status +
+    var minW = (canEdit?W.chk:0) + W.code + W.name + W.status +
       (visGeneral.length * W.general) +
       getPhaseGroups().reduce(function(acc,ph){
         var vis=visiblePhaseSchemas(ph.key);
@@ -594,7 +598,7 @@ function loadDeliverables(){
         });
         return acc;
       },0) +
-      (canEdit||canDel?W.acc:0);
+      (canEdit||canDel?W.acc:0) + 40;// extra padding
 
     var html=
       '<table class="midp-tbl" style="min-width:'+minW+'px;width:max-content"><thead><tr>'+
@@ -680,18 +684,20 @@ function loadDeliverables(){
           '</tr>';
       }).join('')+
       '</tbody></table>'+
-      '</table>'+
-      '<div style="padding:8px 0;font-size:10px;color:var(--text3);margin-top:4px">'+
+      '<div style="padding:8px 20px;font-size:10px;color:var(--text3)">'+
       items.length+' entregable(s) mostrado(s) de '+total+' totales</div>';
     // Wrap table in a styled container but keep it inside del-scroll-zone
     var dt=document.getElementById('del-table');
     dt.innerHTML='';
     // Outer border container — must not clip the table
     var wrapper=document.createElement('div');
-    wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);overflow:visible;margin:0 20px 0 20px';
+    // display:block + width:max-content = wrapper grows as wide as the table content
+    // The scroll zone sees a child wider than itself → enables horizontal scrollbar
+        wrapper.style.cssText='border-radius:var(--rl);border:1px solid var(--border);background:var(--surface);margin:0 20px 16px 20px';
     wrapper.style.minWidth=minW+'px';
     wrapper.innerHTML=html;
     dt.appendChild(wrapper);
+    window._lastDeliverables=items; // cache for PDF export
     // ── Checkbox event listeners ──
     if(canEdit){
       var selAll=document.getElementById('sel-all');
@@ -3635,5 +3641,460 @@ function exportProgressPDF(){
     win.focus();
     setTimeout(function(){win.print();},500);
   };
+  toast('PDF listo para imprimir / guardar.');
+}
+
+// ── EXPORTAR ENTREGABLES A PDF ──
+function exportDeliverablesPDF(){
+  if(!APP.project){toast('Sin proyecto activo.','error');return;}
+  var params='?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc';
+  if(APP.statusFilter)params+='&status=eq.'+APP.statusFilter;
+  if(APP.search)params+='&or=(code.ilike.*'+APP.search+'*,name.ilike.*'+APP.search+'*)';
+  Object.keys(APP.fieldFilters).forEach(function(k){
+    var v=APP.fieldFilters[k];
+    if(v)params+='&field_values->>'+k+'=eq.'+encodeURIComponent(v);
+  });
+  if(APP.packageFilter)params+='&work_package=eq.'+encodeURIComponent(APP.packageFilter);
+
+  sbGet('deliverables',params).then(function(items){
+    if(!items.length){toast('No hay entregables para exportar.','error');return;}
+
+    var now=new Date();
+    var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+    var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+    var phases=getPhaseGroups();
+    var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
+
+    // Build phase date headers
+    var phaseHeaders=phases.map(function(ph){
+      return '<th style="background:'+ph.color+'20;color:'+ph.color+';font-size:9px;padding:5px 8px;white-space:nowrap">'+ph.label+' Fecha</th>';
+    }).join('');
+
+    // Build rows
+    var rows=items.map(function(d,i){
+      var fv=d.field_values||{};
+      var phaseCells=phases.map(function(ph){
+        var dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:'';
+        if(!dt)dt=(fv[ph.key+'__delivery_date'])||'';
+        return '<td style="font-size:9px;text-align:center;padding:4px 8px;white-space:nowrap">'+(dt?fmtDateShort(dt):'--')+'</td>';
+      }).join('');
+      var codeCells=codeSchemas().map(function(s){
+        return '<td style="font-size:9px;padding:4px 8px">'+(fv[s.key]||'--')+'</td>';
+      }).join('');
+      var rowBg=i%2===0?'#ffffff':'#f8fafc';
+      var STATUS_COLORS={pending:'#64748b',in_progress:'#3b82f6',for_review:'#f59e0b',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
+      var stColor=STATUS_COLORS[d.status]||'#64748b';
+      return '<tr style="background:'+rowBg+'">'+
+        '<td style="padding:4px 8px;font-size:9px;font-family:monospace;white-space:nowrap">'+
+        (d.url?'<a href="'+d.url+'" style="color:#2563eb">'+d.code+'</a>':d.code)+'</td>'+
+        '<td style="padding:4px 8px;font-size:10px;max-width:200px">'+d.name+'</td>'+
+        '<td style="padding:4px 8px;font-size:9px;text-align:center;color:'+stColor+';font-weight:600">'+( STATUS_LABELS[d.status]||d.status)+'</td>'+
+        codeCells+
+        '<td style="padding:4px 8px;font-size:9px">'+(d.work_package||'--')+'</td>'+
+        '<td style="padding:4px 8px;font-size:9px">'+(d.group_code||'--')+'</td>'+
+        phaseCells+
+        '</tr>';
+    }).join('');
+
+    // Code field headers
+    var codeHeaders=codeSchemas().map(function(s){
+      return '<th style="background:#1B3A6B;color:#fff;font-size:9px;padding:5px 8px;white-space:nowrap">'+s.name+'</th>';
+    }).join('');
+
+    // Active filters label
+    var filterParts=[];
+    if(APP.statusFilter)filterParts.push('Estado: '+STATUS_LABELS[APP.statusFilter]);
+    if(APP.search)filterParts.push('Búsqueda: "'+APP.search+'"');
+    if(APP.packageFilter)filterParts.push('Paquete: '+APP.packageFilter);
+    Object.entries(APP.fieldFilters).forEach(function(e){if(e[1])filterParts.push(e[0]+': '+e[1]);});
+    var filterLabel=filterParts.length?
+      '<div style="font-size:10px;color:#64748b;margin-bottom:10px">Filtros: '+filterParts.join(' · ')+'</div>':'';
+
+    var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+      '<title>Entregables — '+APP.project.name+'</title>'+
+      '<style>'+
+      'body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#1e293b;font-size:11px}'+
+      'h1{color:#1B3A6B;font-size:16px;margin:0 0 3px}'+
+      '.meta{font-size:10px;color:#64748b}'+
+      '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
+      'table{width:100%;border-collapse:collapse;font-size:10px}'+
+      'th{background:#1B3A6B;color:#fff;padding:5px 8px;text-align:left;font-size:9px;font-weight:600;white-space:nowrap}'+
+      'td{border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
+      '.kpi-row{display:flex;gap:16px;margin-bottom:12px}'+
+      '.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 16px;text-align:center}'+
+      '.kpi-v{font-size:18px;font-weight:700;color:#1B3A6B}'+
+      '.kpi-l{font-size:9px;color:#64748b}'+
+      '@media print{body{padding:8px}@page{size:A4 landscape;margin:10mm}}'+
+      '</style></head><body>'+
+      '<div class="header">'+
+      '<div>'+
+      '<h1>Registro de Entregables MIDP</h1>'+
+      '<div style="color:#2E86C1;font-weight:600;font-size:12px">'+APP.project.name+'</div>'+
+      (APP.project.code?'<div class="meta">Código: '+APP.project.code+'</div>':'')+
+      '</div>'+
+      '<div style="text-align:right">'+
+      '<div class="meta">Fecha: <strong>'+dateStr+'</strong></div>'+
+      '<div class="meta">Hora: <strong>'+timeStr+'</strong></div>'+
+      '<div class="meta">Exportado por: <strong>'+(APP.user?APP.user.full_name:'—')+'</strong></div>'+
+      '</div></div>'+
+      '<div class="kpi-row">'+
+      '<div class="kpi"><div class="kpi-v">'+items.length+'</div><div class="kpi-l">Entregables</div></div>'+
+      '<div class="kpi"><div class="kpi-v">'+items.filter(function(d){return d.status==='approved'||d.status==='issued';}).length+'</div><div class="kpi-l">Completados</div></div>'+
+      '<div class="kpi"><div class="kpi-v">'+items.filter(function(d){return d.status==='pending';}).length+'</div><div class="kpi-l">Pendientes</div></div>'+
+      '<div class="kpi"><div class="kpi-v">'+items.filter(function(d){return d.status==='in_progress';}).length+'</div><div class="kpi-l">En progreso</div></div>'+
+      '</div>'+
+      filterLabel+
+      '<table><thead><tr>'+
+      '<th>Código</th><th>Nombre</th><th>Estado</th>'+
+      codeHeaders+
+      '<th style="background:#1B3A6B;color:#fff;font-size:9px;padding:5px 8px">Paquete</th>'+
+      '<th style="background:#1B3A6B;color:#fff;font-size:9px;padding:5px 8px">Grupo</th>'+
+      phaseHeaders+
+      '</tr></thead><tbody>'+rows+'</tbody></table>'+
+      '<div style="font-size:9px;color:#94a3b8;margin-top:12px;padding-top:8px;border-top:1px solid #e2e8f0;text-align:center">'+
+      'Unify Management · '+APP.project.name+' · Exportado el '+dateStr+' a las '+timeStr+' por '+(APP.user?APP.user.full_name:'—')+
+      '</div></body></html>';
+
+    var win=window.open('','_blank','width=1100,height=750');
+    if(!win){toast('Permite ventanas emergentes para exportar PDF.','error');return;}
+    win.document.write(html);
+    win.document.close();
+    win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
+    toast('PDF listo. Selecciona "Guardar como PDF" en el diálogo de impresión.');
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+// ─────────────────────────────────────────────────────────────
+// EXPORTAR ENTREGABLES A PDF
+// ─────────────────────────────────────────────────────────────
+function exportDeliverablesPDF(){
+  // Load current visible deliverables
+  if(!APP.project){toast('Sin proyecto activo.','error');return;}
+  var params='?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=created_at.desc';
+  if(APP.statusFilter)params+='&status=eq.'+APP.statusFilter;
+  if(APP.search)params+='&or=(code.ilike.*'+APP.search+'*,name.ilike.*'+APP.search+'*)';
+  Object.keys(APP.fieldFilters).forEach(function(k){
+    var v=APP.fieldFilters[k];
+    if(v)params+='&field_values->>'+k+'=eq.'+encodeURIComponent(v);
+  });
+  if(APP.packageFilter)params+='&work_package=eq.'+encodeURIComponent(APP.packageFilter);
+
+  toast('Generando PDF...');
+  sbGet('deliverables',params).then(function(items){
+    var now=new Date();
+    var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+    var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+    var userName=APP.user?APP.user.full_name:'—';
+    var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
+    var STATUS_COLORS={pending:'#64748b',in_progress:'#3b82f6',for_review:'#f59e0b',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
+
+    // Build phase columns
+    var phases=getPhaseGroups();
+    var phaseHeaders=phases.map(function(ph){
+      return '<th colspan="3" style="background:'+ph.color+'20;color:'+ph.color+';border-bottom:2px solid '+ph.color+';font-size:9px">'+ph.label+(ph.sub?' · '+ph.sub:'')+'</th>';
+    }).join('');
+    var phaseSubHeaders=phases.map(function(){
+      return '<th style="font-size:8px;color:#64748b">LOD</th><th style="font-size:8px;color:#64748b">LOI</th><th style="font-size:8px;color:#64748b">Fecha</th>';
+    }).join('');
+
+    var rows=items.map(function(d,i){
+      var phaseCells=phases.map(function(ph){
+        var lod=isKnownPhase(ph.key)?d[ph.key+'_lod']:'';
+        var loi=isKnownPhase(ph.key)?d[ph.key+'_loi']:'';
+        var dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:'';
+        return '<td style="font-size:9px;text-align:center;color:'+(lod?'#1B3A6B':'#94a3b8')+'">'+(lod||'--')+'</td>'+
+               '<td style="font-size:9px;text-align:center;color:'+(loi?'#1B3A6B':'#94a3b8')+'">'+(loi||'--')+'</td>'+
+               '<td style="font-size:9px;text-align:center;color:#64748b">'+(dt?fmtDateShort(dt):'--')+'</td>';
+      }).join('');
+      var bg=i%2===0?'#ffffff':'#f8fafc';
+      var statusColor=STATUS_COLORS[d.status]||'#64748b';
+      var fv=d.field_values||{};
+      return '<tr style="background:'+bg+'">'+
+        '<td style="font-size:8px;padding:4px 6px;font-family:monospace;color:#1B3A6B;white-space:nowrap">'+d.code+'</td>'+
+        '<td style="font-size:9px;padding:4px 6px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+d.name+'</td>'+
+        '<td style="font-size:9px;padding:4px 6px;text-align:center"><span style="background:'+statusColor+'20;color:'+statusColor+';border-radius:3px;padding:1px 5px;font-size:8px;font-weight:600">'+( STATUS_LABELS[d.status]||d.status)+'</span></td>'+
+        '<td style="font-size:9px;padding:4px 6px;color:#64748b;white-space:nowrap">'+(d.work_package||'--')+'</td>'+
+        phaseCells+
+        '</tr>';
+    }).join('');
+
+    // Filter summary
+    var filters=[];
+    if(APP.statusFilter)filters.push('Estado: '+STATUS_LABELS[APP.statusFilter]);
+    if(APP.search)filters.push('Búsqueda: "'+APP.search+'"');
+    if(APP.packageFilter)filters.push('Paquete: '+APP.packageFilter);
+    Object.entries(APP.fieldFilters).forEach(function(e){if(e[1])filters.push(e[0]+': '+e[1]);});
+
+    var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+      '<title>Entregables — '+APP.project.name+'</title>'+
+      '<style>'+
+      'body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#1e293b;font-size:11px}'+
+      'h1{color:#1B3A6B;font-size:16px;margin:0 0 2px}'+
+      '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
+      '.meta{font-size:9px;color:#64748b;text-align:right;line-height:1.6}'+
+      '.summary{display:flex;gap:16px;margin-bottom:12px;padding:8px 12px;background:#f8fafc;border-radius:6px;font-size:10px}'+
+      '.sum-item{display:flex;flex-direction:column;align-items:center}'+
+      '.sum-val{font-size:18px;font-weight:700;color:#1B3A6B}'+
+      '.sum-lbl{font-size:9px;color:#64748b}'+
+      'table{width:100%;border-collapse:collapse;font-size:10px}'+
+      'th{background:#1B3A6B;color:#fff;padding:5px 6px;font-size:9px;font-weight:600;text-align:left;white-space:nowrap}'+
+      'td{padding:4px 6px;border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
+      '.filter-tag{display:inline-block;background:#eff6ff;color:#2563eb;border-radius:3px;padding:1px 6px;font-size:9px;margin-right:4px}'+
+      '@media print{body{padding:8px}.no-print{display:none}@page{size:A4 landscape;margin:10mm}}'+
+      '</style></head><body>'+
+      '<div class="header">'+
+      '<div>'+
+      '<h1>Registro de Entregables MIDP</h1>'+
+      '<div style="font-size:11px;color:#2E86C1;font-weight:600">'+APP.project.name+(APP.project.code?' · '+APP.project.code:'')+'</div>'+
+      (filters.length?'<div style="margin-top:4px">'+filters.map(function(f){return '<span class="filter-tag">'+f+'</span>';}).join('')+'</div>':'')+
+      '</div>'+
+      '<div class="meta">'+
+      '<div>'+dateStr+'  '+timeStr+'</div>'+
+      '<div>Exportado por: <strong>'+userName+'</strong></div>'+
+      '<div>'+items.length+' entregable'+(items.length!==1?'s':'')+' mostrado'+(items.length!==1?'s':'')+'</div>'+
+      '</div></div>'+
+      '<div class="summary">'+
+      '<div class="sum-item"><div class="sum-val">'+items.length+'</div><div class="sum-lbl">Total</div></div>'+
+      Object.entries(STATUS_LABELS).map(function(e){
+        var cnt=items.filter(function(d){return d.status===e[0];}).length;
+        if(!cnt)return '';
+        return '<div class="sum-item"><div class="sum-val" style="color:'+STATUS_COLORS[e[0]]+'">'+cnt+'</div><div class="sum-lbl">'+e[1]+'</div></div>';
+      }).join('')+
+      '</div>'+
+      '<table>'+
+      '<thead>'+
+      '<tr>'+
+      '<th rowspan="2">Código</th>'+
+      '<th rowspan="2">Nombre</th>'+
+      '<th rowspan="2">Estado</th>'+
+      '<th rowspan="2">Paquete</th>'+
+      phaseHeaders+
+      '</tr>'+
+      '<tr>'+phaseSubHeaders+'</tr>'+
+      '</thead>'+
+      '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      '<div style="font-size:8px;color:#94a3b8;margin-top:12px;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px">'+
+      'Unify Management · '+APP.project.name+' · '+dateStr+' '+timeStr+' · '+userName+
+      '</div></body></html>';
+
+    var win=window.open('','_blank','width=1100,height=750');
+    if(!win){toast('Habilita ventanas emergentes para exportar PDF.','error');return;}
+    win.document.write(html);
+    win.document.close();
+    win.onload=function(){win.focus();setTimeout(function(){win.print();},600);};
+  }).catch(function(e){toast('Error: '+e.message,'error');});
+}
+
+// ──────────────────────────────────────────────
+// EXPORTAR ENTREGABLES A PDF
+// ──────────────────────────────────────────────
+function exportDeliverablesPDF(){
+  // Use the current loaded deliverables (window._lastDeliverables or re-read from DOM)
+  var items=window._lastDeliverables||[];
+  if(!items.length){toast('No hay entregables para exportar.','error');return;}
+
+  var now=new Date();
+  var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+  var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  var userName=APP.user?APP.user.full_name||APP.user.email:'—';
+  var proj=APP.project?APP.project.name:'—';
+  var projCode=APP.project?APP.project.code:'';
+
+  // Active filters label
+  var filters=[];
+  if(APP.statusFilter)filters.push('Estado: '+APP.statusFilter);
+  if(APP.packageFilter)filters.push('Paquete: '+APP.packageFilter);
+  if(APP.search)filters.push('Búsqueda: '+APP.search);
+  Object.keys(APP.fieldFilters||{}).forEach(function(k){if(APP.fieldFilters[k])filters.push(k+': '+APP.fieldFilters[k]);});
+
+  var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
+  var STATUS_COLORS={pending:'#64748b',in_progress:'#2563eb',for_review:'#d97706',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
+
+  // Code field headers
+  var codSchemas=codeSchemas();
+  var genSchemas=generalSchemas();
+  var phases=getPhaseGroups();
+
+  // Build header row
+  var thCode=codSchemas.map(function(s){return '<th>'+s.name+'</th>';}).join('');
+  var thGen='<th>Nombre</th><th>Estado</th><th>Paquete</th>';
+  var thPhase=phases.map(function(ph){
+    return visiblePhaseSchemas(ph.key).map(function(s){
+      var short=s.name.replace(ph.label,'').replace('-','').trim()||s.name;
+      return '<th style="color:'+ph.color+'">'+ph.label+'<br><span style="font-weight:400;font-size:8px">'+short+'</span></th>';
+    }).join('');
+  }).join('');
+
+  // Build data rows
+  var rows=items.map(function(d,i){
+    var bg=i%2===0?'#ffffff':'#f8fafc';
+    var fv=d.field_values||{};
+
+    var tdCode=codSchemas.map(function(s){return '<td>'+( fv[s.key]||'—')+'</td>';}).join('');
+    var status=d.status||'pending';
+    var tdGen='<td style="max-width:200px;word-break:break-word">'+d.name+'</td>'+
+      '<td><span style="background:'+STATUS_COLORS[status]+'20;color:'+STATUS_COLORS[status]+';padding:2px 6px;border-radius:4px;font-size:9px;font-weight:600">'+
+      (STATUS_LABELS[status]||status)+'</span></td>'+
+      '<td>'+(d.work_package||'—')+'</td>';
+    var tdPhase=phases.map(function(ph){
+      return visiblePhaseSchemas(ph.key).map(function(s){
+        var val=getFieldVal(d,s)||'—';
+        if(s.field_type==='date'&&val&&val!=='—')val=fmtDateShort(val);
+        return '<td style="font-size:9px">'+val+'</td>';
+      }).join('');
+    }).join('');
+
+    return '<tr style="background:'+bg+'"><td style="color:#94a3b8;font-size:9px">'+(i+1)+'</td>'+
+      '<td style="font-family:monospace;font-size:9px;white-space:nowrap">'+d.code+'</td>'+
+      tdCode+tdGen+tdPhase+'</tr>';
+  }).join('');
+
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+    '<title>Entregables — '+proj+'</title>'+
+    '<style>'+
+    'body{font-family:Arial,sans-serif;font-size:10px;color:#1e293b;margin:0;padding:16px}'+
+    'h1{color:#1B3A6B;font-size:16px;margin:0 0 2px}'+
+    '.sub{font-size:11px;color:#2E86C1;margin:0 0 12px}'+
+    '.meta{font-size:9px;color:#64748b;margin-bottom:12px;display:flex;justify-content:space-between}'+
+    'table{border-collapse:collapse;width:100%;font-size:9px}'+
+    'th{background:#1B3A6B;color:#fff;padding:5px 6px;text-align:left;white-space:nowrap;font-size:8px;font-weight:600}'+
+    'td{padding:4px 6px;border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
+    '.filters{background:#f1f5f9;border-radius:4px;padding:6px 10px;font-size:9px;color:#475569;margin-bottom:10px}'+
+    'footer{margin-top:16px;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;text-align:center}'+
+    '@media print{@page{size:A3 landscape;margin:12mm}body{padding:0}}'+
+    '</style></head><body>'+
+    '<h1>Entregables MIDP</h1>'+
+    '<p class="sub">'+proj+(projCode?' · '+projCode:'')+'</p>'+
+    '<div class="meta">'+
+    '<span>Total: <strong>'+items.length+'</strong> entregable(s)'+(filters.length?' · Filtros: '+filters.join(', '):'')+'</span>'+
+    '<span>Exportado por <strong>'+userName+'</strong> · '+dateStr+' '+timeStr+'</span>'+
+    '</div>'+
+    (filters.length?'<div class="filters">Filtros activos: '+filters.join(' | ')+'</div>':'')+
+    '<table><thead><tr>'+
+    '<th>#</th><th>Código</th>'+thCode+thGen+thPhase+
+    '</tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<footer>Unify Management · '+proj+' · Generado el '+dateStr+' a las '+timeStr+' por '+userName+'</footer>'+
+    '</body></html>';
+
+  var win=window.open('','_blank','width=1100,height=750');
+  if(!win){toast('Permite ventanas emergentes para exportar.','error');return;}
+  win.document.write(html);
+  win.document.close();
+  win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
+  toast('PDF listo — usa Guardar como PDF en el diálogo de impresión.');
+}
+
+// ─────────────────────────────────────────────────────────────
+// EXPORTAR ENTREGABLES A PDF
+// ─────────────────────────────────────────────────────────────
+function exportDeliverablesPDF(){
+  var allDels=window._lastDeliverables;
+  if(!allDels||!allDels.length){toast('No hay entregables para exportar.','error');return;}
+  var now=new Date();
+  var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+  var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  var userName=APP.user?APP.user.full_name:'—';
+  var phases=getPhaseGroups();
+  var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
+  var STATUS_COLORS={pending:'#64748b',in_progress:'#2563eb',for_review:'#d97706',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
+
+  // Build thead
+  var thPhase=phases.map(function(ph){
+    var vis=visiblePhaseSchemas(ph.key);
+    if(!vis.length)return '';
+    return '<th colspan="'+vis.length+'" style="background:'+ph.color+'22;color:'+ph.color+';font-size:9px;text-align:center;padding:4px 8px;border:1px solid #e2e8f0">'+ph.label+'</th>';
+  }).join('');
+  var thPhaseFields=phases.map(function(ph){
+    return visiblePhaseSchemas(ph.key).map(function(s){
+      return '<th style="font-size:9px;white-space:nowrap;padding:4px 6px;background:#f8fafc;border:1px solid #e2e8f0">'+s.name.replace(ph.label+' - ','')+'</th>';
+    }).join('');
+  }).join('');
+
+  var codCols=codeSchemas().map(function(s){
+    return '<th style="font-size:9px;padding:4px 6px;background:#f8fafc;border:1px solid #e2e8f0">'+s.name+'</th>';
+  }).join('');
+
+  // Build rows
+  var rows=allDels.map(function(d,i){
+    var statusCol='<td style="text-align:center"><span style="font-size:9px;padding:2px 6px;border-radius:10px;background:'+
+      (STATUS_COLORS[d.status]||'#64748b')+'22;color:'+(STATUS_COLORS[d.status]||'#64748b')+';font-weight:600">'+
+      (STATUS_LABELS[d.status]||d.status)+'</span></td>';
+
+    var codCells=codeSchemas().map(function(s){
+      return '<td style="font-size:10px;padding:4px 6px;border:1px solid #f1f5f9;text-align:center">'+(d.field_values&&d.field_values[s.key]||'--')+'</td>';
+    }).join('');
+
+    var phaseCells=phases.map(function(ph){
+      return visiblePhaseSchemas(ph.key).map(function(s){
+        var val=getFieldVal(d,s)||'--';
+        return '<td style="font-size:9px;padding:4px 6px;border:1px solid #f1f5f9;text-align:center;white-space:nowrap">'+val+'</td>';
+      }).join('');
+    }).join('');
+
+    var bg=i%2===0?'#ffffff':'#f8fafc';
+    return '<tr style="background:'+bg+'">' +
+      '<td style="font-size:9px;font-family:monospace;padding:4px 6px;border:1px solid #f1f5f9;white-space:nowrap">'+
+      (d.url?'<a href="'+d.url+'" style="color:#2563eb">'+d.code+'</a>':d.code)+'</td>'+
+      '<td style="font-size:10px;padding:4px 8px;border:1px solid #f1f5f9;max-width:200px">'+d.name+'</td>'+
+      statusCol+
+      codCells+
+      phaseCells+
+      '</tr>';
+  }).join('');
+
+  // Filter info
+  var filters=[];
+  var st=APP.statusFilter;var pk=APP.packageFilter;
+  if(st)filters.push('Estado: '+st);
+  if(pk)filters.push('Paquete: '+pk);
+  Object.keys(APP.fieldFilters||{}).forEach(function(k){if(APP.fieldFilters[k])filters.push(k+': '+APP.fieldFilters[k]);});
+  var filterLine=filters.length?'<div style="font-size:10px;color:#64748b;margin-bottom:8px">Filtros: '+filters.join(' · ')+'</div>':'';
+
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+    '<title>Entregables — '+APP.project.name+'</title>'+
+    '<style>'+
+    'body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#1e293b;font-size:11px}'+
+    'h1{color:#1B3A6B;font-size:16px;margin:0 0 2px}'+
+    '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
+    '.meta{font-size:10px;color:#64748b;text-align:right;line-height:1.6}'+
+    'table{width:100%;border-collapse:collapse;font-size:10px}'+
+    'th{background:#1B3A6B;color:#fff;padding:5px 8px;text-align:left;font-size:9px;font-weight:600;white-space:nowrap}'+
+    '.kpi{display:inline-block;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 16px;margin-right:8px;text-align:center}'+
+    '.kpi b{display:block;font-size:18px;color:#1B3A6B}'+
+    '.kpi span{font-size:9px;color:#64748b}'+
+    '@media print{body{padding:8px}}'+
+    '</style></head><body>'+
+    '<div class="header">'+
+    '<div>'+
+    '<h1>Entregables MIDP</h1>'+
+    '<div style="font-size:12px;color:#2E86C1;font-weight:600">'+APP.project.name+'</div>'+
+    '</div>'+
+    '<div class="meta">'+
+    'Fecha: <strong>'+dateStr+'</strong><br>'+
+    'Hora: <strong>'+timeStr+'</strong><br>'+
+    'Exportado por: <strong>'+userName+'</strong>'+
+    '</div></div>'+
+    '<div style="margin-bottom:12px">'+
+    '<div class="kpi"><b>'+allDels.length+'</b><span>Total</span></div>'+
+    '<div class="kpi"><b>'+allDels.filter(function(d){return d.status==='approved'||d.status==='issued';}).length+'</b><span>Completados</span></div>'+
+    '<div class="kpi"><b>'+allDels.filter(function(d){return d.status==='in_progress';}).length+'</b><span>En progreso</span></div>'+
+    '<div class="kpi"><b>'+allDels.filter(function(d){return d.status==='pending';}).length+'</b><span>Pendientes</span></div>'+
+    '</div>'+
+    filterLine+
+    '<table><thead>'+
+    '<tr><th rowspan="2">Código</th><th rowspan="2">Nombre</th><th rowspan="2">Estado</th>'+
+    (codCols?'<th colspan="'+codeSchemas().length+'" style="background:#1e3a5f;text-align:center">Codificación</th>':'')+
+    thPhase+'</tr>'+
+    '<tr>'+codCols+thPhaseFields+'</tr>'+
+    '</thead><tbody>'+rows+'</tbody></table>'+
+    '<div style="font-size:9px;color:#94a3b8;margin-top:12px;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px">'+
+    'Unify Management · '+APP.project.name+' · '+dateStr+' '+timeStr+' · '+userName+'</div>'+
+    '</body></html>';
+
+  var win=window.open('','_blank','width=1100,height=800');
+  if(!win){toast('Permite ventanas emergentes para exportar PDF.','error');return;}
+  win.document.write(html);win.document.close();
+  win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
   toast('PDF listo para imprimir / guardar.');
 }

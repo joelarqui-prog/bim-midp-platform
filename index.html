@@ -133,3 +133,108 @@ textarea.input{resize:vertical;min-height:70px}
 .midp-tbl thead tr:nth-child(2) th{position:sticky;top:27px;z-index:4;background:var(--bg);box-shadow:inset 0 -1px 0 var(--border2)}
 .midp-tbl thead tr:first-child .scol{position:sticky;top:0;z-index:9 !important;background:var(--bg)}
 .midp-tbl thead tr:nth-child(2) .scol{position:sticky;top:27px;z-index:9 !important;background:var(--bg)}
+
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="l-logo">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="10" fill="#1B3A6B"/><path d="M8 26V10l7 10 7-10v16" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="10" r="3.5" fill="#2E86C1"/><circle cx="28" cy="18" r="3.5" fill="#10B981"/><circle cx="28" cy="26" r="3.5" fill="#F59E0B"/></svg>
+      <div><div class="l-logo-title">Unify Management</div><div class="l-logo-sub">BIM · ISO 19650</div></div>
+    </div>
+    <div class="l-title">Iniciar sesión</div>
+    <div class="form-group"><label class="label">Correo electrónico</label><input type="email" class="input" id="login-email" placeholder="usuario@empresa.com" onkeydown="if(event.key==='Enter')handleLogin()"></div>
+    <div class="form-group"><label class="label">Contraseña</label><input type="password" class="input" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleLogin()"></div>
+    <div class="error-msg" id="login-error" style="display:none"></div>
+    <button class="btn btn-primary" id="login-btn" onclick="handleLogin()" style="width:100%;margin-top:8px">Iniciar sesión</button>
+  </div>
+</div>
+
+<!-- PROJECT SELECTOR -->
+<div id="project-selector" style="display:none">
+  <div class="ps-card">
+    <div class="l-logo" style="margin-bottom:20px">
+      <svg width="32" height="32" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="10" fill="#1B3A6B"/><path d="M8 26V10l7 10 7-10v16" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="10" r="3.5" fill="#2E86C1"/><circle cx="28" cy="18" r="3.5" fill="#10B981"/><circle cx="28" cy="26" r="3.5" fill="#F59E0B"/></svg>
+      <div><div class="l-logo-title">Unify Management</div><div class="l-logo-sub">Selecciona un proyecto</div></div>
+    </div>
+    <div id="ps-user-info" style="margin-bottom:16px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--text2)"></div>
+    <div id="project-list"><div class="loading"><div class="spinner"></div></div></div>
+    <div id="ps-new-project" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <button class="btn btn-primary btn-sm" style="width:100%" onclick="openNewProjectModal()">+ Nuevo proyecto</button>
+    </div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;font-size:11px" onclick="handleLogout()">Cerrar sesión</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none;height:100vh;overflow:hidden">
+  <div class="shell">
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+      <div class="sb-header">
+        <div class="sb-logo" onclick="toggleSidebar()">
+          <div class="sb-logo-icon">
+            <svg width="22" height="22" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="8" fill="#1B3A6B"/><path d="M8 26V10l7 10 7-10v16" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="10" r="3" fill="#2E86C1"/><circle cx="28" cy="18" r="3" fill="#10B981"/><circle cx="28" cy="26" r="3" fill="#F59E0B"/></svg>
+          </div>
+          <div class="sb-logo-inner">
+            <div class="sb-title">Unify</div>
+            <div class="sb-sub">MANAGEMENT</div>
+          </div>
+        </div>
+      </div>
+      <div class="sb-proj" id="sb-proj-info" style="display:none">
+        <div class="sb-proj-code" id="sb-proj-code">—</div>
+        <div class="sb-proj-name" id="sb-proj-name">—</div>
+      </div>
+      <div class="sb-nav">
+        <div class="sb-section">GESTIÓN</div>
+        <button class="sb-item" onclick="nav('deliverables',this)" title="Entregables"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/></svg><span class="sb-item-label">Entregables</span></button>
+        <button class="sb-item" id="sb-packages" onclick="nav('packages',this)" title="Paquetes" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg><span class="sb-item-label">Paquetes</span></button>
+        <button class="sb-item" id="sb-models" onclick="nav('models',this)" title="Modelos BIM"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span class="sb-item-label">Modelos</span></button>
+        <button class="sb-item" id="sb-groups" onclick="nav('groups',this)" title="Grupos de entregables" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span class="sb-item-label">Grupos</span></button>
+        <button class="sb-item" id="sb-phases" onclick="nav('phases',this)" title="Fases del proyecto" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><line x1="7" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="17" y2="12"/><polyline points="16 8 20 12 16 16"/></svg><span class="sb-item-label">Fases</span></button>
+        <button class="sb-item" onclick="nav('progress',this)" title="Control de avance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="sb-item-label">Control de avance</span></button>
+        <div class="sb-section">ADMINISTRACIÓN</div>
+        <button class="sb-item" id="sb-schemas" onclick="nav('schemas',this)" title="Config. de campos" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg><span class="sb-item-label">Config. de campos</span></button>
+        <button class="sb-item" id="sb-users" onclick="nav('users',this)" title="Usuarios y permisos" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span class="sb-item-label">Usuarios y permisos</span></button>
+        <button class="sb-item" id="sb-projects" onclick="nav('projects',this)" title="Proyectos" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sb-item-label">Proyectos</span></button>
+      </div>
+      <div class="sb-footer">
+        <div class="sb-user" id="sb-user-info">
+          <div class="sb-avatar" id="sb-avatar">AM</div>
+          <div class="sb-user-detail">
+            <div class="sb-user-name" id="sb-user-name">—</div>
+            <div class="sb-user-role" id="sb-user-role">—</div>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="width:100%;margin-top:6px;font-size:10px;color:var(--text3)">&#8594; Cerrar sesion</button>
+      </div>
+    </div>
+    <!-- MAIN -->
+    <div class="main">
+      <div class="topbar">
+        <div class="topbar-left">
+          <div class="breadcrumb">
+            <span id="bread-title" style="font-weight:600;color:var(--text)">—</span>
+            <span id="bread-sub" style="color:var(--text3);font-size:12px"></span>
+          </div>
+        </div>
+        <div class="topbar-actions" id="topbar-actions"></div>
+      </div>
+      <div class="content" id="content">
+        <div class="empty"><div class="empty-title">Selecciona un menú</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div id="modal-container"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="app.js?v=1775973710"></script>
+</body>
+</html>

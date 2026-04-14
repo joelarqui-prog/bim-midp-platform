@@ -3,8 +3,22 @@ var SUPA_URL='https://rrzlwvqlzhmzyrramjcw.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyemx3dnFsemhtenlycmFtamN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1ODIyMzYsImV4cCI6MjA5MDE1ODIzNn0.IeZlvcT1GaqQybZRbxyjgoEFfJ6Z6BVxbZRgLPzi2Fw';
 var H={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'};
 function sbGet(t,p){return fetch(SUPA_URL+'/rest/v1/'+t+(p||''),{headers:H}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
-function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
-function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
+function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){
+  if(!r.ok)return r.text().then(function(e){
+    var msg=e;try{var j=JSON.parse(e);msg=j.message||j.details||j.hint||e;}catch(x){}
+    throw new Error(msg);
+  });
+  if(r.status===204)return {};
+  return r.text().then(function(t){try{return t?JSON.parse(t):{};}catch(x){return {};}});
+});}
+function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){
+  if(!r.ok)return r.text().then(function(e){
+    var msg=e;try{var j=JSON.parse(e);msg=j.message||j.details||j.hint||e;}catch(x){}
+    throw new Error(msg);
+  });
+  if(r.status===204)return {};
+  return r.text().then(function(t){try{return t?JSON.parse(t):{};}catch(x){return {};}});
+});}
 function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
 
 var APP={user:null,project:null,schemas:[],users:[],packages:[],groups:[],phases:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
@@ -2118,7 +2132,7 @@ function saveUser(id){
       return sbPost('users',Object.assign({},payload,{email:email,password_hash:hash,is_active:true,permissions:Object.assign({},DEFAULT_PERMS)}));
     });
   p.then(function(){toast(id?'Usuario actualizado.':'Usuario creado.');closeModal('user-modal');renderUsers();})
-   .catch(function(e){if(e.message!=='missing')toast(e.message,'error');btn.disabled=false;btn.textContent=id?'Actualizar':'Crear usuario';});
+   .catch(function(e){if(e.message!=='missing')toast(String(e.message||e),'error');if(btn){btn.disabled=false;btn.textContent=id?'Actualizar usuario':'Crear usuario';}});
 }
 
 // ── PAQUETES ──
@@ -2975,33 +2989,39 @@ function openPhaseModal(phId){
 }
 
 function savePhase(phId,overlay){
-  var name=document.getElementById('ph-name').value.trim();
-  var fieldKey=document.getElementById('ph-field-key').value;
-  var fieldValue=document.getElementById('ph-field-value').value.trim();
+  // Use overlay.querySelector to read fields — avoids ID conflicts
+  function gph(id){var el=overlay?overlay.querySelector('#'+id):document.getElementById(id);return el?el.value:''}
+  var name=gph('ph-name').trim();
+  var fieldKey=gph('ph-field-key');
+  var fieldValue=gph('ph-field-value').trim();
   if(!name||!fieldKey||!fieldValue){toast('Nombre, campo y valor son obligatorios.','error');return;}
+  var btn=overlay?overlay.querySelector('#ph-save'):null;
+  if(btn){btn.disabled=true;btn.textContent='Guardando...';}
 
   var payload={
     project_id:APP.project.id,
     name:name,
-    sub_label:document.getElementById('ph-sub').value.trim()||null,
-    display_order:parseInt(document.getElementById('ph-order').value)||1,
-    order_num:parseInt(document.getElementById('ph-order').value)||1,
-    color:document.getElementById('ph-color').value||'#3B6FE8',
+    sub_label:gph('ph-sub').trim()||null,
+    display_order:parseInt(gph('ph-order'))||1,
+    order_num:parseInt(gph('ph-order'))||1,
+    color:gph('ph-color')||'#3B6FE8',
     field_key:fieldKey,
     field_value:fieldValue,
-    date_field_key:document.getElementById('ph-date-key').value||null,
+    date_field_key:gph('ph-date-key')||null,
     is_active:true
   };
 
   var req=phId?sbPatch('project_phases','id=eq.'+phId,payload):sbPost('project_phases',payload);
   req.then(function(){
     toast(phId?'Fase actualizada.':'Fase creada.');
-    overlay.remove();
+    if(overlay)overlay.remove();
     renderPhases();
-    // Reload phases into APP
     sbGet('project_phases','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=display_order.asc')
       .then(function(ph){APP.phases=ph||[];}).catch(function(){});
-  }).catch(function(e){toast(e.message,'error');});
+  }).catch(function(e){
+    toast(e.message,'error');
+    if(btn){btn.disabled=false;btn.textContent=phId?'Actualizar fase':'Crear fase';}
+  });
 }
 
 function confirmDeletePhase(phId,phName){

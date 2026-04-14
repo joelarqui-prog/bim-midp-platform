@@ -187,6 +187,24 @@ textarea.input{resize:vertical;min-height:70px}
   </div>
 </div>
 
+<!-- PASSWORD RESET PAGE (shown when coming from reset email link) -->
+<div id="reset-password-page" style="display:none;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)">
+  <div class="login-card">
+    <div class="l-logo">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><rect width="36" height="36" rx="10" fill="#1B3A6B"/><path d="M8 26V10l7 10 7-10v16" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="28" cy="10" r="3.5" fill="#2E86C1"/><circle cx="28" cy="18" r="3.5" fill="#10B981"/><circle cx="28" cy="26" r="3.5" fill="#F59E0B"/></svg>
+      <div><div class="l-logo-title">Unify Management</div><div class="l-logo-sub">Nueva contraseña</div></div>
+    </div>
+    <div class="l-title">Establece tu nueva contraseña</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px">Ingresa y confirma tu nueva contraseña para acceder.</div>
+    <div class="form-group"><label class="label">Nueva contraseña *</label>
+    <input type="password" class="input" id="rp-pass-new" placeholder="Mínimo 8 caracteres" autocomplete="new-password"></div>
+    <div class="form-group"><label class="label">Confirmar contraseña *</label>
+    <input type="password" class="input" id="rp-pass-confirm" placeholder="Repetir contraseña" autocomplete="new-password"></div>
+    <div class="error-msg" id="rp-error" style="display:none"></div>
+    <button class="btn btn-primary" id="rp-btn" onclick="handlePasswordReset()" style="width:100%;margin-top:8px">Guardar nueva contraseña</button>
+  </div>
+</div>
+
 <!-- PROJECT SELECTOR -->
 <div id="project-selector" style="display:none;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0f172a,#1e3a5f)">
   <div class="ps-card">
@@ -304,8 +322,9 @@ textarea.input{resize:vertical;min-height:70px}
 <div id="modal-container"></div>
 <div id="toast" class="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="app.js?v=1776141689"></script>
+<script src="app.js?v=1776142352"></script>
 </body>
 </html>
 

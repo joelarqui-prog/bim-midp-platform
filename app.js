@@ -2,24 +2,76 @@
 var SUPA_URL='https://rrzlwvqlzhmzyrramjcw.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyemx3dnFsemhtenlycmFtamN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1ODIyMzYsImV4cCI6MjA5MDE1ODIzNn0.IeZlvcT1GaqQybZRbxyjgoEFfJ6Z6BVxbZRgLPzi2Fw';
 var H={'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'return=representation'};
-function sbGet(t,p){return fetch(SUPA_URL+'/rest/v1/'+t+(p||''),{headers:H}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
-function sbPost(t,b){return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){
-  if(!r.ok)return r.text().then(function(e){
-    var msg=e;try{var j=JSON.parse(e);msg=j.message||j.details||j.hint||e;}catch(x){}
-    throw new Error(msg);
+
+// ── Supabase JS SDK client (para Auth) ──
+// Se inicializa después de que el SDK CDN esté disponible
+var _supaClient=null;
+function getSupaClient(){
+  if(_supaClient)return _supaClient;
+  if(typeof window.supabase!=='undefined'&&window.supabase.createClient){
+    _supaClient=window.supabase.createClient(SUPA_URL,SUPA_KEY,{
+      auth:{
+        autoRefreshToken:true,
+        persistSession:true,
+        detectSessionInUrl:true,
+        storageKey:'midp_supabase_auth'
+      }
+    });
+  }
+  return _supaClient;
+}
+
+// ── REST API helpers (para datos — tablas) ──
+function sbGet(t,p){
+  return getAuthHeader().then(function(authH){
+    return fetch(SUPA_URL+'/rest/v1/'+t+(p||''),{headers:Object.assign({},H,authH)})
+      .then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});
   });
-  if(r.status===204)return {};
-  return r.text().then(function(t){try{return t?JSON.parse(t):{};}catch(x){return {};}});
-});}
-function sbPatch(t,f,b){return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:H,body:JSON.stringify(b)}).then(function(r){
-  if(!r.ok)return r.text().then(function(e){
-    var msg=e;try{var j=JSON.parse(e);msg=j.message||j.details||j.hint||e;}catch(x){}
-    throw new Error(msg);
+}
+function sbPost(t,b){
+  return getAuthHeader().then(function(authH){
+    return fetch(SUPA_URL+'/rest/v1/'+t,{method:'POST',headers:Object.assign({},H,authH),body:JSON.stringify(b)})
+      .then(function(r){
+        if(!r.ok)return r.text().then(function(e){
+          var msg=e;try{var j=JSON.parse(e);msg=j.message||j.details||j.hint||e;}catch(x){}
+          throw new Error(msg);
+        });
+        if(r.status===204)return {};
+        return r.text().then(function(txt){try{return txt?JSON.parse(txt):{};}catch(x){return {};}});
+      });
   });
-  if(r.status===204)return {};
-  return r.text().then(function(t){try{return t?JSON.parse(t):{};}catch(x){return {};}});
-});}
-function sbRpc(fn,b){return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:H,body:JSON.stringify(b)}).then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});}
+}
+function sbPatch(t,f,b){
+  return getAuthHeader().then(function(authH){
+    return fetch(SUPA_URL+'/rest/v1/'+t+'?'+f,{method:'PATCH',headers:Object.assign({},H,authH),body:JSON.stringify(b)})
+      .then(function(r){
+        if(!r.ok)return r.text().then(function(e){
+          var msg=e;try{var j=JSON.parse(e);msg=j.message||j.details||j.hint||e;}catch(x){}
+          throw new Error(msg);
+        });
+        if(r.status===204)return {};
+        return r.text().then(function(txt){try{return txt?JSON.parse(txt):{};}catch(x){return {};}});
+      });
+  });
+}
+function sbRpc(fn,b){
+  return getAuthHeader().then(function(authH){
+    return fetch(SUPA_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:Object.assign({},H,authH),body:JSON.stringify(b)})
+      .then(function(r){if(!r.ok)return r.text().then(function(e){throw new Error(e);});return r.json();});
+  });
+}
+
+// Obtiene el Authorization header con el JWT de sesión activa si existe
+function getAuthHeader(){
+  var sc=getSupaClient();
+  if(!sc)return Promise.resolve({});
+  return sc.auth.getSession().then(function(res){
+    var token=res&&res.data&&res.data.session&&res.data.session.access_token;
+    if(token)return {'Authorization':'Bearer '+token};
+    return {};
+  }).catch(function(){return {};});
+}
+
 
 var APP={user:null,project:null,schemas:[],users:[],packages:[],groups:[],phases:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
@@ -222,23 +274,39 @@ function handleLogin(){
   var pass=document.getElementById('login-pass').value;
   var errEl=document.getElementById('login-error');
   var btn=document.getElementById('login-btn');
-  function showErr(m){errEl.textContent=m;errEl.style.display='block';btn.disabled=false;btn.textContent='Iniciar sesion';}
+  function showErr(m){errEl.textContent=m;errEl.style.display='block';btn.disabled=false;btn.textContent='Iniciar sesión';}
   if(!email){showErr('Ingresa tu correo.');return;}
-  if(!pass){showErr('Ingresa tu contrasena.');return;}
+  if(!pass){showErr('Ingresa tu contraseña.');return;}
   errEl.style.display='none';btn.disabled=true;btn.textContent='Verificando...';
-  sbGet('users','?email=eq.'+encodeURIComponent(email)+'&is_active=eq.true&select=*')
-    .then(function(users){
-      if(!users||!users.length){showErr('Correo o contrasena incorrectos.');return;}
-      var user=users[0];
-      return sbRpc('verify_password',{input_password:pass,stored_hash:user.password_hash})
-        .then(function(ok){
-          if(!ok){showErr('Correo o contrasena incorrectos.');return;}
-          APP.user=user;
-          sbPatch('users','id=eq.'+user.id,{last_login_at:new Date().toISOString()}).catch(function(){});
-          try{localStorage.setItem('midp_session',JSON.stringify({userId:user.id,savedAt:Date.now()}));}catch(e){}
-          showProjectSelector(user);
+
+  var sc=getSupaClient();
+  if(!sc){showErr('Error de configuración. Recarga la página.');return;}
+
+  sc.auth.signInWithPassword({email:email,password:pass})
+    .then(function(res){
+      if(res.error)throw res.error;
+      var authUser=res.data.user;
+      // Load profile from our users table using auth.uid
+      return sbGet('users','?auth_id=eq.'+authUser.id+'&is_active=eq.true&select=*')
+        .then(function(users){
+          if(!users||!users.length)throw new Error('Perfil de usuario no encontrado. Contacta al administrador.');
+          APP.user=users[0];
+          APP.user.auth_uid=authUser.id;
+          sbPatch('users','auth_id=eq.'+authUser.id,{last_login_at:new Date().toISOString()}).catch(function(){});
+          showProjectSelector(APP.user);
         });
-    }).catch(function(e){showErr('Error: '+e.message);});
+    }).catch(function(e){
+      var msg=e.message||String(e);
+      if(msg.indexOf('Invalid login')>=0||msg.indexOf('invalid_credentials')>=0||msg.indexOf('Email not confirmed')>=0){
+        if(msg.indexOf('not confirmed')>=0||msg.indexOf('Email not confirmed')>=0){
+          showErr('Confirma tu correo antes de iniciar sesión. Revisa tu bandeja de entrada.');
+        }else{
+          showErr('Correo o contraseña incorrectos.');
+        }
+      }else{
+        showErr('Error: '+msg);
+      }
+    });
 }
 
 function showProjectSelector(user){
@@ -317,9 +385,7 @@ function selectProject(projectId){
       // Guardar la membresía del usuario actual en este proyecto
       APP.projectMember=APP.projectMembers.find(function(m){return m.user_id===APP.user.id;})||null;
       try{
-        var s=JSON.parse(localStorage.getItem('midp_session')||'{}');
-        s.projectId=APP.project.id;
-        localStorage.setItem('midp_session',JSON.stringify(s));
+        localStorage.setItem('midp_auth_project',JSON.stringify({projectId:APP.project.id}));
       }catch(e){}
       showApp(APP.user);
     })
@@ -370,26 +436,34 @@ function showApp(user){
 }
 
 function doLogout(){
+  var sc=getSupaClient();
+  if(sc)sc.auth.signOut().catch(function(){});
   APP.user=null;APP.project=null;APP.schemas=[];APP.packages=[];APP.fieldFilters={};
-  try{localStorage.removeItem('midp_session');}catch(e){}
   document.getElementById('app').style.display='none';
   document.getElementById('project-selector').style.display='none';
   document.getElementById('login-page').style.display='flex';
-  document.getElementById('login-email').value='';
-  document.getElementById('login-pass').value='';
+  var emailEl=document.getElementById('login-email');
+  var passEl=document.getElementById('login-pass');
+  if(emailEl)emailEl.value='';
+  if(passEl)passEl.value='';
 }
 
 function restoreSession(userId,projectId){
-  sbGet('users','?id=eq.'+userId+'&is_active=eq.true&select=*')
-    .then(function(users){
-      if(!users||!users.length){localStorage.removeItem('midp_session');return;}
-      APP.user=users[0];
-      if(projectId){
-        selectProject(projectId);
-      }else{
-        showProjectSelector(APP.user);
-      }
-    }).catch(function(){localStorage.removeItem('midp_session');});
+  // Legacy function — now handled by initAuth via Supabase session
+  var sc=getSupaClient();
+  if(!sc){return;}
+  sc.auth.getSession().then(function(res){
+    if(!res.data||!res.data.session){return;}
+    var authUser=res.data.session.user;
+    sbGet('users','?auth_id=eq.'+authUser.id+'&is_active=eq.true&select=*')
+      .then(function(users){
+        if(!users||!users.length)return;
+        APP.user=users[0];
+        APP.user.auth_uid=authUser.id;
+        if(projectId){selectProject(projectId);}
+        else{showProjectSelector(APP.user);}
+      }).catch(function(){});
+  }).catch(function(){});
 }
 
 // New project modal
@@ -452,16 +526,76 @@ function saveNewProject(){
 document.addEventListener('DOMContentLoaded',function(){
   var lp=document.getElementById('login-pass');
   if(lp)lp.addEventListener('keydown',function(e){if(e.key==='Enter')handleLogin();});
-  try{
-    var saved=localStorage.getItem('midp_session');
-    if(saved){
-      var session=JSON.parse(saved);
-      if(session.userId&&(Date.now()-session.savedAt)<8*60*60*1000){
-        restoreSession(session.userId,session.projectId||null);return;
-      }else{localStorage.removeItem('midp_session');}
-    }
-  }catch(e){}
+
+  // ── Detect if this is a password-reset redirect from email link ──
+  // Supabase Auth puts #access_token=...&type=recovery in the URL
+  var hashParams=new URLSearchParams(window.location.hash.replace('#',''));
+  if(hashParams.get('type')==='recovery'&&hashParams.get('access_token')){
+    // Show reset password page — SDK will handle the session automatically
+    document.getElementById('login-page').style.display='none';
+    document.getElementById('project-selector').style.display='none';
+    document.getElementById('reset-password-page').style.display='flex';
+    return;
+  }
+
+  // ── Restore session if active ──
+  initAuth();
 });
+
+function initAuth(){
+  var sc=getSupaClient();
+  if(!sc){
+    // SDK not yet loaded — retry after short delay
+    setTimeout(initAuth,200);
+    return;
+  }
+  // Listen for auth state changes
+  sc.auth.onAuthStateChange(function(event,session){
+    if(event==='SIGNED_IN'&&session&&!APP.user){
+      // Auto-restore on tab focus / token refresh
+      var authUser=session.user;
+      sbGet('users','?auth_id=eq.'+authUser.id+'&is_active=eq.true&select=*')
+        .then(function(users){
+          if(!users||!users.length)return;
+          if(APP.user)return; // already loaded
+          APP.user=users[0];
+          APP.user.auth_uid=authUser.id;
+          // Restore last project from localStorage
+          try{
+            var saved=localStorage.getItem('midp_auth_project');
+            var pid=saved?JSON.parse(saved).projectId:null;
+            if(pid){selectProject(pid);}else{showProjectSelector(APP.user);}
+          }catch(e){showProjectSelector(APP.user);}
+        }).catch(function(){});
+    }
+    if(event==='SIGNED_OUT'){
+      APP.user=null;
+    }
+    if(event==='PASSWORD_RECOVERY'){
+      // Handled above via hash detection
+    }
+  });
+
+  // Check for existing active session on page load
+  sc.auth.getSession().then(function(res){
+    if(!res.data||!res.data.session){
+      // No active session — show login
+      return;
+    }
+    var authUser=res.data.session.user;
+    sbGet('users','?auth_id=eq.'+authUser.id+'&is_active=eq.true&select=*')
+      .then(function(users){
+        if(!users||!users.length)return;
+        APP.user=users[0];
+        APP.user.auth_uid=authUser.id;
+        try{
+          var saved=localStorage.getItem('midp_auth_project');
+          var pid=saved?JSON.parse(saved).projectId:null;
+          if(pid){selectProject(pid);}else{showProjectSelector(APP.user);}
+        }catch(e){showProjectSelector(APP.user);}
+      }).catch(function(){});
+  }).catch(function(){});
+}
 
 
 // ── NAV ──
@@ -2134,29 +2268,85 @@ function openUserModal(id){
 }
 
 function saveUser(id){
+  var _userModal=document.getElementById('user-modal');
   var btn=document.getElementById('u-save-btn');
   var name=document.getElementById('u-name').value.trim();
   if(!name){toast('Nombre obligatorio.','error');return;}
   btn.disabled=true;btn.textContent='Guardando...';
-  var payload={full_name:name,role:document.getElementById('u-role').value,
+
+  var profilePayload={
+    full_name:name,
+    role:document.getElementById('u-role').value,
     specialty:document.getElementById('u-spec').value||null,
     company:document.getElementById('u-comp').value||null,
-    phone:document.getElementById('u-phone').value||null};
-  var p=id?sbPatch('users','id=eq.'+id,payload):
-    sbRpc('hash_password',{input_password:document.getElementById('u-pass').value}).then(function(hash){
-      var email=document.getElementById('u-email').value.trim();
-      if(!email||!hash){toast('Correo y contrasena obligatorios.','error');throw new Error('missing');}
-      return sbPost('users',Object.assign({},payload,{email:email,password_hash:hash,is_active:true,permissions:Object.assign({},DEFAULT_PERMS)}));
+    phone:document.getElementById('u-phone').value||null
+  };
+
+  var p;
+  if(id){
+    // Update existing user profile (no auth changes)
+    p=sbPatch('users','id=eq.'+id,profilePayload);
+  }else{
+    // Create new user: first create in Supabase Auth, then insert profile
+    var email=document.getElementById('u-email').value.trim();
+    var pass=document.getElementById('u-pass').value;
+    if(!email||!pass){toast('Correo y contraseña son obligatorios.','error');btn.disabled=false;btn.textContent='Crear usuario';return;}
+    if(pass.length<8){toast('La contraseña debe tener al menos 8 caracteres.','error');btn.disabled=false;btn.textContent='Crear usuario';return;}
+
+    var sc=getSupaClient();
+    if(!sc){toast('Error de configuración.','error');btn.disabled=false;btn.textContent='Crear usuario';return;}
+
+    p=sc.auth.admin.createUser({
+      email:email,
+      password:pass,
+      email_confirm:true,  // auto-confirm so user can login immediately
+      user_metadata:{full_name:name}
+    }).then(function(res){
+      if(res.error)throw res.error;
+      var authUid=res.data.user.id;
+      // Insert profile in our users table
+      return sbPost('users',Object.assign({},profilePayload,{
+        email:email,
+        auth_id:authUid,
+        is_active:true
+      }));
+    }).catch(function(e){
+      // Fallback: admin API not available (anon key can't use admin)
+      // Use service role via Edge Function or signUp
+      var msg=String(e.message||e);
+      if(msg.indexOf('not allowed')>=0||msg.indexOf('admin')>=0||msg.indexOf('403')>=0){
+        // Use Edge Function for admin user creation
+        return createUserViaEdgeFunction(email,pass,profilePayload);
+      }
+      throw e;
     });
-  // Capture modal element at call time for safe removal
-  var _userModal=document.getElementById('user-modal');
+  }
+
   p.then(function(){
-    toast(id?'Usuario actualizado.':'Usuario creado.');
+    toast(id?'Usuario actualizado.':'Usuario creado. El usuario ya puede iniciar sesión.');
     if(_userModal&&_userModal.parentNode)_userModal.remove();
     renderUsers();
-  })
-   .catch(function(e){if(e.message!=='missing')toast(String(e.message||e),'error');if(btn){btn.disabled=false;btn.textContent=id?'Actualizar usuario':'Crear usuario';}});
+    // Reload users list
+    sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc')
+      .then(function(u){APP.users=u;}).catch(function(){});
+  }).catch(function(e){
+    toast(String(e.message||e),'error');
+    if(btn){btn.disabled=false;btn.textContent=id?'Actualizar usuario':'Crear usuario';}
+  });
 }
+
+// Edge Function fallback for creating users when admin API isn't available
+function createUserViaEdgeFunction(email,pass,profilePayload){
+  return fetch(SUPA_URL+'/functions/v1/create-user',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPA_KEY},
+    body:JSON.stringify({email:email,password:pass,profile:profilePayload})
+  }).then(function(r){
+    if(!r.ok)return r.text().then(function(e){throw new Error(e);});
+    return r.json();
+  });
+}
+
 
 // ── PAQUETES ──
 function renderPackages(){
@@ -3871,6 +4061,48 @@ function exportDeliverablesPDF(){
   toast('PDF listo para imprimir / guardar.');
 }
 
+// ── Handles the password reset form shown after clicking email link ──
+function handlePasswordReset(){
+  var btn=document.getElementById('rp-btn');
+  var errEl=document.getElementById('rp-error');
+  var passNew=document.getElementById('rp-pass-new').value;
+  var passConfirm=document.getElementById('rp-pass-confirm').value;
+  errEl.style.display='none';
+
+  if(!passNew){errEl.textContent='Ingresa la nueva contraseña.';errEl.style.display='block';return;}
+  if(passNew.length<8){errEl.textContent='La contraseña debe tener al menos 8 caracteres.';errEl.style.display='block';return;}
+  if(passNew!==passConfirm){errEl.textContent='Las contraseñas no coinciden.';errEl.style.display='block';return;}
+
+  btn.disabled=true;btn.textContent='Guardando...';
+
+  var sc=getSupaClient();
+  if(!sc){errEl.textContent='Error de configuración.';errEl.style.display='block';btn.disabled=false;btn.textContent='Guardar nueva contraseña';return;}
+
+  sc.auth.updateUser({password:passNew})
+    .then(function(res){
+      if(res.error)throw res.error;
+      // Clean up URL hash
+      window.history.replaceState(null,'',window.location.pathname);
+      // Show success and redirect to login
+      document.getElementById('rp-error').style.display='none';
+      btn.textContent='¡Contraseña actualizada!';
+      btn.style.background='var(--green)';
+      setTimeout(function(){
+        // Sign out and go to login so user logs in fresh
+        sc.auth.signOut().then(function(){
+          document.getElementById('reset-password-page').style.display='none';
+          document.getElementById('login-page').style.display='flex';
+          toast('Contraseña actualizada. Ya puedes iniciar sesión.');
+        });
+      },1500);
+    }).catch(function(e){
+      errEl.textContent='Error: '+String(e.message||e);
+      errEl.style.display='block';
+      btn.disabled=false;btn.textContent='Guardar nueva contraseña';
+    });
+}
+
+
 // ══════════════════════════════════════════════════════════════
 // ── MI PERFIL — Ver y editar datos propios + cambiar contraseña
 // ══════════════════════════════════════════════════════════════
@@ -3980,22 +4212,26 @@ function saveMyProfile(overlay){
     phone:overlay.querySelector('#prof-phone').value||null
   };
 
-  // If changing password: verify current → hash new → patch both
+  // If changing password: verify current via Supabase Auth → updateUser
   var updateChain;
   if(changingPassword){
-    updateChain=sbRpc('verify_password',{
-      input_password:passCurrent,
-      stored_hash:APP.user.password_hash
-    }).then(function(ok){
-      if(!ok){throw new Error('La contraseña actual es incorrecta.');}
-      return sbRpc('hash_password',{input_password:passNew});
-    }).then(function(newHash){
-      return sbPatch('users','id=eq.'+APP.user.id,
-        Object.assign({},profilePayload,{password_hash:newHash})
-      );
+    var sc=getSupaClient();
+    if(!sc){toast('Error de configuración.','error');btn.disabled=false;btn.textContent='Guardar cambios';return;}
+    // Verify current password by attempting re-authentication
+    updateChain=sc.auth.signInWithPassword({
+      email:APP.user.email,
+      password:passCurrent
+    }).then(function(res){
+      if(res.error)throw new Error('La contraseña actual es incorrecta.');
+      // Update password via Supabase Auth
+      return sc.auth.updateUser({password:passNew});
+    }).then(function(res){
+      if(res.error)throw res.error;
+      // Also update profile data in our table
+      return sbPatch('users','auth_id=eq.'+APP.user.auth_uid,profilePayload);
     });
   }else{
-    updateChain=sbPatch('users','id=eq.'+APP.user.id,profilePayload);
+    updateChain=sbPatch('users','auth_id=eq.'+APP.user.auth_uid,profilePayload);
   }
 
   updateChain.then(function(){
@@ -4038,41 +4274,28 @@ function openForgotPasswordModal(){
     '<div class="modal-header">'+
     '<div>'+
     '<div class="modal-title">Recuperar contraseña</div>'+
-    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Ingresa tu correo para continuar</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Te enviaremos un enlace a tu correo</div>'+
     '</div>'+
     '<button class="btn btn-ghost btn-sm" id="fp-close">✕</button></div>'+
     '<div class="modal-body">'+
-
-    // Step 1: Email
-    '<div id="fp-step1">'+
+    '<div id="fp-form">'+
     '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;font-size:12px;color:var(--brand);margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">'+
-    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
-    '<div>El restablecimiento de contraseña lo realiza directamente aquí. Verifica tu correo y podrás ingresar una nueva contraseña.</div>'+
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>'+
+    '<div>Recibirás un correo con un enlace seguro. El enlace expira en <strong>15 minutos</strong>. Revisa también tu carpeta de spam.</div>'+
     '</div>'+
     '<div class="form-group"><label class="label">Correo electrónico *</label>'+
     '<input type="email" class="input" id="fp-email" placeholder="usuario@empresa.com" autocomplete="email"></div>'+
-    '<div id="fp-email-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
+    '<div id="fp-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
     '</div>'+
-
-    // Step 2: Nueva contraseña (oculto inicialmente)
-    '<div id="fp-step2" style="display:none">'+
-    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px;color:#15803d;margin-bottom:16px;display:flex;gap:8px;align-items:center">'+
-    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'+
-    '<span id="fp-user-found-msg">Cuenta verificada.</span>'+
+    '<div id="fp-success" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;text-align:center">'+
+    '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" style="margin-bottom:8px"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>'+
+    '<div style="font-size:14px;font-weight:700;color:#15803d;margin-bottom:6px">¡Correo enviado!</div>'+
+    '<div style="font-size:12px;color:var(--text2)">Revisa tu bandeja de entrada y haz clic en el enlace para restablecer tu contraseña.<br><span style="color:var(--text3);font-size:11px;margin-top:6px;display:block">Si no lo encuentras, revisa la carpeta de spam.</span></div>'+
     '</div>'+
-    '<div class="form-grid">'+
-    '<div class="form-group full"><label class="label">Nueva contraseña *</label>'+
-    '<input type="password" class="input" id="fp-pass-new" placeholder="Mínimo 8 caracteres" autocomplete="new-password"></div>'+
-    '<div class="form-group full"><label class="label">Confirmar contraseña *</label>'+
-    '<input type="password" class="input" id="fp-pass-confirm" placeholder="Repetir nueva contraseña" autocomplete="new-password"></div>'+
     '</div>'+
-    '<div id="fp-pass-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
-    '</div>'+
-
-    '</div>'+
-    '<div class="modal-footer">'+
+    '<div class="modal-footer" id="fp-footer">'+
     '<button class="btn" id="fp-cancel">Cancelar</button>'+
-    '<button class="btn btn-primary" id="fp-btn">Verificar correo</button>'+
+    '<button class="btn btn-primary" id="fp-btn">Enviar enlace</button>'+
     '</div></div>';
 
   var existing=document.getElementById('forgot-modal');
@@ -4082,72 +4305,43 @@ function openForgotPasswordModal(){
   overlay.querySelector('#fp-close').onclick=function(){overlay.remove();};
   overlay.querySelector('#fp-cancel').onclick=function(){overlay.remove();};
 
-  var step=1;
-  var foundUser=null;
-
-  var fpBtn=overlay.querySelector('#fp-btn');
   var emailInput=overlay.querySelector('#fp-email');
   if(emailInput)setTimeout(function(){emailInput.focus();},100);
 
+  var fpBtn=overlay.querySelector('#fp-btn');
   fpBtn.onclick=function(){
-    if(step===1){
-      // Verify email
-      var email=overlay.querySelector('#fp-email').value.trim().toLowerCase();
-      var errEl=overlay.querySelector('#fp-email-error');
-      errEl.style.display='none';
-      if(!email){errEl.textContent='Ingresa tu correo electrónico.';errEl.style.display='block';return;}
-      fpBtn.disabled=true;fpBtn.textContent='Verificando...';
-      sbGet('users','?email=eq.'+encodeURIComponent(email)+'&is_active=eq.true&select=id,full_name,email')
-        .then(function(users){
-          if(!users||!users.length){
-            errEl.textContent='No encontramos una cuenta activa con ese correo.';
-            errEl.style.display='block';
-            fpBtn.disabled=false;fpBtn.textContent='Verificar correo';
-            return;
-          }
-          foundUser=users[0];
-          // Move to step 2
-          step=2;
-          overlay.querySelector('#fp-step1').style.display='none';
-          overlay.querySelector('#fp-step2').style.display='block';
-          overlay.querySelector('#fp-user-found-msg').textContent=
-            'Cuenta verificada: '+foundUser.full_name+'. Ingresa tu nueva contraseña.';
-          fpBtn.disabled=false;fpBtn.textContent='Cambiar contraseña';
-          overlay.querySelector('#fp-pass-new').focus();
-        }).catch(function(e){
-          errEl.textContent='Error al verificar: '+String(e.message||e);
-          errEl.style.display='block';
-          fpBtn.disabled=false;fpBtn.textContent='Verificar correo';
-        });
-    }else{
-      // Change password
-      var passNew=overlay.querySelector('#fp-pass-new').value;
-      var passConfirm=overlay.querySelector('#fp-pass-confirm').value;
-      var passErrEl=overlay.querySelector('#fp-pass-error');
-      passErrEl.style.display='none';
-      if(!passNew){passErrEl.textContent='Ingresa la nueva contraseña.';passErrEl.style.display='block';return;}
-      if(passNew.length<8){passErrEl.textContent='Mínimo 8 caracteres.';passErrEl.style.display='block';return;}
-      if(passNew!==passConfirm){passErrEl.textContent='Las contraseñas no coinciden.';passErrEl.style.display='block';return;}
-      fpBtn.disabled=true;fpBtn.textContent='Guardando...';
-      sbRpc('hash_password',{input_password:passNew})
-        .then(function(hash){
-          return sbPatch('users','id=eq.'+foundUser.id,{password_hash:hash});
-        }).then(function(){
-          toast('Contraseña actualizada. Ya puedes iniciar sesión.');
-          overlay.remove();
-        }).catch(function(e){
-          passErrEl.textContent='Error: '+String(e.message||e);
-          passErrEl.style.display='block';
-          fpBtn.disabled=false;fpBtn.textContent='Cambiar contraseña';
-        });
-    }
+    var email=overlay.querySelector('#fp-email').value.trim().toLowerCase();
+    var errEl=overlay.querySelector('#fp-error');
+    errEl.style.display='none';
+    if(!email){errEl.textContent='Ingresa tu correo electrónico.';errEl.style.display='block';return;}
+
+    fpBtn.disabled=true;fpBtn.textContent='Enviando...';
+
+    var sc=getSupaClient();
+    if(!sc){errEl.textContent='Error de configuración.';errEl.style.display='block';fpBtn.disabled=false;fpBtn.textContent='Enviar enlace';return;}
+
+    // redirectTo must match a URL allowed in Supabase Dashboard → Auth → URL Configuration
+    var redirectUrl=window.location.origin+window.location.pathname;
+
+    sc.auth.resetPasswordForEmail(email,{redirectTo:redirectUrl})
+      .then(function(res){
+        if(res.error)throw res.error;
+        // Show success regardless (don't reveal if email exists — security best practice)
+        overlay.querySelector('#fp-form').style.display='none';
+        overlay.querySelector('#fp-success').style.display='block';
+        overlay.querySelector('#fp-footer').innerHTML=
+          '<button class="btn btn-primary" onclick="document.getElementById(\'forgot-modal\').remove()">Entendido</button>';
+      }).catch(function(e){
+        var msg=String(e.message||e);
+        errEl.textContent='Error al enviar: '+msg;
+        errEl.style.display='block';
+        fpBtn.disabled=false;fpBtn.textContent='Enviar enlace';
+      });
   };
 
-  // Enter key support
-  overlay.addEventListener('keydown',function(e){
-    if(e.key==='Enter')fpBtn.click();
-  });
+  overlay.addEventListener('keydown',function(e){if(e.key==='Enter')fpBtn.click();});
 }
+
 
 // ── Admin reset password (desde Usuarios y permisos) ──
 function openAdminResetPasswordModal(userId, userName){
@@ -4161,12 +4355,7 @@ function openAdminResetPasswordModal(userId, userName){
     '<div class="modal-body">'+
     '<div style="font-size:13px;color:var(--text2);margin-bottom:14px">'+
     'Restablece la contraseña de <strong>'+userName+'</strong>.</div>'+
-    '<div class="form-grid">'+
-    '<div class="form-group full"><label class="label">Nueva contraseña *</label>'+
-    '<input type="password" class="input" id="ar-pass" placeholder="Nueva contraseña temporal" autocomplete="new-password"></div>'+
-    '<div class="form-group full"><label class="label">Confirmar contraseña *</label>'+
-    '<input type="password" class="input" id="ar-confirm" placeholder="Repetir contraseña" autocomplete="new-password"></div>'+
-    '</div>'+
+
     '<div id="ar-error" style="display:none;color:var(--red);font-size:12px;margin-top:8px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
     '</div>'+
     '<div class="modal-footer">'+
@@ -4179,20 +4368,22 @@ function openAdminResetPasswordModal(userId, userName){
   document.getElementById('modal-container').appendChild(overlay);
   overlay.querySelector('#ar-close').onclick=function(){overlay.remove();};
   overlay.querySelector('#ar-cancel').onclick=function(){overlay.remove();};
-  overlay.querySelector('#ar-pass').focus();
   overlay.querySelector('#ar-save').onclick=function(){
-    var pass=overlay.querySelector('#ar-pass').value;
-    var confirm=overlay.querySelector('#ar-confirm').value;
     var errEl=overlay.querySelector('#ar-error');errEl.style.display='none';
-    if(!pass){errEl.textContent='Ingresa la nueva contraseña.';errEl.style.display='block';return;}
-    if(pass.length<8){errEl.textContent='Mínimo 8 caracteres.';errEl.style.display='block';return;}
-    if(pass!==confirm){errEl.textContent='Las contraseñas no coinciden.';errEl.style.display='block';return;}
     var btn=overlay.querySelector('#ar-save');
-    btn.disabled=true;btn.textContent='Guardando...';
-    sbRpc('hash_password',{input_password:pass})
-      .then(function(hash){return sbPatch('users','id=eq.'+userId,{password_hash:hash});})
-      .then(function(){
-        toast('Contraseña de '+userName+' restablecida.');
+    btn.disabled=true;btn.textContent='Enviando...';
+    var pass=''; var confirm='';
+    // Use Supabase auth.resetPasswordForEmail to send reset email to user
+    // This is safer than admin-setting passwords directly from the frontend
+    sbGet('users','?id=eq.'+userId+'&select=email')
+      .then(function(users){
+        if(!users||!users.length)throw new Error('Usuario no encontrado.');
+        var sc=getSupaClient();
+        if(!sc)throw new Error('Error de configuración.');
+        var redirectUrl=window.location.origin+window.location.pathname;
+        return sc.auth.resetPasswordForEmail(users[0].email,{redirectTo:redirectUrl});
+      }).then(function(){
+        toast('Enlace de restablecimiento enviado al correo de '+userName+'.');
         overlay.remove();
       }).catch(function(e){
         errEl.textContent=String(e.message||e);errEl.style.display='block';

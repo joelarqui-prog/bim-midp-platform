@@ -183,6 +183,7 @@ textarea.input{resize:vertical;min-height:70px}
     <div class="form-group"><label class="label">Contraseña</label><input type="password" class="input" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')handleLogin()"></div>
     <div class="error-msg" id="login-error" style="display:none"></div>
     <button class="btn btn-primary" id="login-btn" onclick="handleLogin()" style="width:100%;margin-top:8px">Iniciar sesión</button>
+    <button class="btn btn-ghost" onclick="openForgotPasswordModal()" style="width:100%;margin-top:6px;font-size:11px;color:var(--text3)">¿Olvidaste tu contraseña?</button>
   </div>
 </div>
 
@@ -270,14 +271,15 @@ textarea.input{resize:vertical;min-height:70px}
         <button class="sb-item" id="sb-projects" onclick="nav('projects',this)" title="Proyectos" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span class="sb-item-label">Proyectos</span></button>
       </div>
       <div class="sb-footer">
-        <div class="sb-user" id="sb-user-info">
+        <div class="sb-user" id="sb-user-info" onclick="openMyProfileModal()" title="Ver / editar mi perfil" style="cursor:pointer;border-radius:var(--r);transition:background .15s" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
           <div class="sb-avatar" id="sb-avatar">AM</div>
-          <div class="sb-user-detail">
+          <div class="sb-user-detail" style="flex:1;min-width:0">
             <div class="sb-user-name" id="sb-uname">—</div>
             <div class="sb-user-role"><span class="badge b-spec" id="sb-role-badge">—</span></div>
           </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" style="flex-shrink:0"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="width:100%;margin-top:6px;font-size:10px;color:var(--text3)">&#8594; Cerrar sesion</button>
+        <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="width:100%;margin-top:4px;font-size:10px;color:var(--text3)">&#8594; Cerrar sesión</button>
       </div>
     </div>
     <!-- MAIN -->
@@ -303,7 +305,7 @@ textarea.input{resize:vertical;min-height:70px}
 <div id="toast" class="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="app.js?v=1776139220"></script>
+<script src="app.js?v=1776141689"></script>
 </body>
 </html>
 

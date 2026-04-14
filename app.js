@@ -2040,7 +2040,8 @@ function renderUsers(){
         '<span class="badge '+(isProjAdmin?'b-proj-admin':isTrueAdmin?'b-admin':pmRole==='bim_manager'?'b-bim':'b-spec')+'">'+
         (isProjAdmin?'Admin. Proyecto':isTrueAdmin?'Administrador':pmRole==='bim_manager'?'BIM Manager':'Especialista')+'</span>'+
         (u.is_active?'<span class="badge b-approved" style="font-size:9px">Activo</span>':'<span class="badge b-rejected" style="font-size:9px">Inactivo</span>')+
-        (isAdmin&&!isTrueAdmin?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+m.user_id+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>':'')+
+        (isAdmin&&!isTrueAdmin?'<button class="btn btn-ghost btn-sm edit-user-btn" data-uid="'+m.user_id+'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+
+          '<button class="btn btn-ghost btn-sm reset-pass-btn" data-uid="'+m.user_id+'" data-uname="'+(u.full_name||'Usuario')+'" title="Restablecer contraseña"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>':'')+
         '</div></div>'+
         '<div class="perm-body">'+
         (isAdmin&&!isTrueAdmin?
@@ -2062,6 +2063,9 @@ function renderUsers(){
     document.getElementById('content').innerHTML=html;
     document.querySelectorAll('.edit-user-btn').forEach(function(btn){
       btn.addEventListener('click',function(){openUserModal(btn.dataset.uid);});
+    });
+    document.querySelectorAll('.reset-pass-btn').forEach(function(btn){
+      btn.addEventListener('click',function(){openAdminResetPasswordModal(btn.dataset.uid,btn.dataset.uname);});
     });
     document.querySelectorAll('.proj-admin-toggle').forEach(function(chk){
       chk.addEventListener('change',function(){toggleProjectAdmin(chk.dataset.mid,chk.dataset.uid,chk.checked);});
@@ -3866,6 +3870,337 @@ function exportDeliverablesPDF(){
   win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
   toast('PDF listo para imprimir / guardar.');
 }
+
+// ══════════════════════════════════════════════════════════════
+// ── MI PERFIL — Ver y editar datos propios + cambiar contraseña
+// ══════════════════════════════════════════════════════════════
+
+function openMyProfileModal(){
+  if(!APP.user){return;}
+  var u=APP.user;
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='profile-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:520px">'+
+    '<div class="modal-header">'+
+    '<div>'+
+    '<div class="modal-title">Mi perfil</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Actualiza tus datos personales y contraseña</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="prof-close">✕</button>'+
+    '</div>'+
+    // Avatar grande
+    '<div class="modal-body">'+
+    '<div style="display:flex;align-items:center;gap:16px;padding:14px 0 20px;border-bottom:1px solid var(--border2);margin-bottom:20px">'+
+    '<div style="width:56px;height:56px;border-radius:50%;background:var(--brand-light);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--brand);flex-shrink:0">'+
+    initials(u.full_name||'?')+
+    '</div>'+
+    '<div>'+
+    '<div style="font-size:16px;font-weight:700;color:var(--text)">'+u.full_name+'</div>'+
+    '<div style="font-size:12px;color:var(--text3)">'+u.email+'</div>'+
+    '<div style="margin-top:4px">'+roleBadge(u.role)+'</div>'+
+    '</div>'+
+    '</div>'+
+
+    // ── Sección 1: Datos personales ──
+    '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Datos personales</div>'+
+    '<div class="form-grid" style="margin-bottom:20px">'+
+    '<div class="form-group full"><label class="label">Nombre completo *</label>'+
+    '<input type="text" class="input" id="prof-name" value="'+(u.full_name||'')+'" placeholder="Nombre completo"></div>'+
+    '<div class="form-group"><label class="label">Especialidad</label>'+
+    '<input type="text" class="input" id="prof-spec" value="'+(u.specialty||'')+'" placeholder="Ej: Arquitectura, MEP..."></div>'+
+    '<div class="form-group"><label class="label">Empresa</label>'+
+    '<input type="text" class="input" id="prof-comp" value="'+(u.company||'')+'" placeholder="Ej: Consorcio SDD"></div>'+
+    '<div class="form-group"><label class="label">Teléfono</label>'+
+    '<input type="text" class="input" id="prof-phone" value="'+(u.phone||'')+'" placeholder="+51 999 000 000"></div>'+
+    '</div>'+
+
+    // ── Sección 2: Cambiar contraseña ──
+    '<div style="border:1px solid var(--border);border-radius:8px;padding:16px;background:var(--bg)">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">🔒 Cambiar contraseña</div>'+
+    '<div class="form-grid">'+
+    '<div class="form-group full"><label class="label">Contraseña actual *</label>'+
+    '<input type="password" class="input" id="prof-pass-current" placeholder="Tu contraseña actual" autocomplete="current-password"></div>'+
+    '<div class="form-group"><label class="label">Nueva contraseña *</label>'+
+    '<input type="password" class="input" id="prof-pass-new" placeholder="Mínimo 8 caracteres" autocomplete="new-password"></div>'+
+    '<div class="form-group"><label class="label">Confirmar nueva contraseña *</label>'+
+    '<input type="password" class="input" id="prof-pass-confirm" placeholder="Repetir nueva contraseña" autocomplete="new-password"></div>'+
+    '</div>'+
+    '<div style="font-size:10px;color:var(--text3);margin-top:4px">Deja en blanco si no deseas cambiar la contraseña</div>'+
+    '<div id="prof-pass-error" style="display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--red);margin-top:10px"></div>'+
+    '</div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="prof-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="prof-save">Guardar cambios</button>'+
+    '</div></div>';
+
+  var existing=document.getElementById('profile-modal');
+  if(existing)existing.remove();
+  document.getElementById('modal-container').appendChild(overlay);
+  overlay.querySelector('#prof-close').onclick=function(){overlay.remove();};
+  overlay.querySelector('#prof-cancel').onclick=function(){overlay.remove();};
+  overlay.querySelector('#prof-save').onclick=function(){saveMyProfile(overlay);};
+}
+
+function saveMyProfile(overlay){
+  var btn=overlay.querySelector('#prof-save');
+  var errEl=overlay.querySelector('#prof-pass-error');
+  errEl.style.display='none';
+
+  var name=overlay.querySelector('#prof-name').value.trim();
+  if(!name){toast('El nombre es obligatorio.','error');return;}
+
+  var passCurrentEl=overlay.querySelector('#prof-pass-current');
+  var passNewEl=overlay.querySelector('#prof-pass-new');
+  var passConfirmEl=overlay.querySelector('#prof-pass-confirm');
+  var passCurrent=passCurrentEl.value;
+  var passNew=passNewEl.value;
+  var passConfirm=passConfirmEl.value;
+
+  var changingPassword=passCurrent||passNew||passConfirm;
+
+  if(changingPassword){
+    if(!passCurrent){showPassErr('Ingresa tu contraseña actual.');return;}
+    if(!passNew){showPassErr('Ingresa la nueva contraseña.');return;}
+    if(passNew.length<8){showPassErr('La nueva contraseña debe tener al menos 8 caracteres.');return;}
+    if(passNew!==passConfirm){showPassErr('Las contraseñas nuevas no coinciden.');return;}
+  }
+
+  function showPassErr(msg){
+    errEl.textContent=msg;errEl.style.display='block';
+  }
+
+  btn.disabled=true;btn.textContent='Guardando...';
+
+  var profilePayload={
+    full_name:name,
+    specialty:overlay.querySelector('#prof-spec').value||null,
+    company:overlay.querySelector('#prof-comp').value||null,
+    phone:overlay.querySelector('#prof-phone').value||null
+  };
+
+  // If changing password: verify current → hash new → patch both
+  var updateChain;
+  if(changingPassword){
+    updateChain=sbRpc('verify_password',{
+      input_password:passCurrent,
+      stored_hash:APP.user.password_hash
+    }).then(function(ok){
+      if(!ok){throw new Error('La contraseña actual es incorrecta.');}
+      return sbRpc('hash_password',{input_password:passNew});
+    }).then(function(newHash){
+      return sbPatch('users','id=eq.'+APP.user.id,
+        Object.assign({},profilePayload,{password_hash:newHash})
+      );
+    });
+  }else{
+    updateChain=sbPatch('users','id=eq.'+APP.user.id,profilePayload);
+  }
+
+  updateChain.then(function(){
+    // Update local APP.user
+    APP.user.full_name=name;
+    APP.user.specialty=profilePayload.specialty;
+    APP.user.company=profilePayload.company;
+    APP.user.phone=profilePayload.phone;
+    // Update sidebar display
+    var unameEl=document.getElementById('sb-uname');
+    var avatarEl=document.getElementById('sb-avatar');
+    if(unameEl)unameEl.textContent=name;
+    if(avatarEl)avatarEl.textContent=initials(name);
+    toast(changingPassword?'Perfil y contraseña actualizados.':'Perfil actualizado.');
+    overlay.remove();
+  }).catch(function(e){
+    var msg=String(e.message||e);
+    if(msg.indexOf('incorrecta')>=0||msg.indexOf('incorrect')>=0){
+      showPassErr(msg);
+    }else{
+      toast(msg,'error');
+    }
+    btn.disabled=false;btn.textContent='Guardar cambios';
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// ── RECUPERAR CONTRASEÑA (por admin reset)
+// ══════════════════════════════════════════════════════════════
+// Flujo: usuario ingresa su email → se verifica que existe →
+// se muestra formulario para nueva contraseña (sin email externo,
+// ya que la plataforma usa auth propia sin proveedor de email)
+// Admin puede resetear desde Usuarios y permisos
+
+function openForgotPasswordModal(){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='forgot-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:440px">'+
+    '<div class="modal-header">'+
+    '<div>'+
+    '<div class="modal-title">Recuperar contraseña</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Ingresa tu correo para continuar</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="fp-close">✕</button></div>'+
+    '<div class="modal-body">'+
+
+    // Step 1: Email
+    '<div id="fp-step1">'+
+    '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;font-size:12px;color:var(--brand);margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">'+
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+    '<div>El restablecimiento de contraseña lo realiza directamente aquí. Verifica tu correo y podrás ingresar una nueva contraseña.</div>'+
+    '</div>'+
+    '<div class="form-group"><label class="label">Correo electrónico *</label>'+
+    '<input type="email" class="input" id="fp-email" placeholder="usuario@empresa.com" autocomplete="email"></div>'+
+    '<div id="fp-email-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
+    '</div>'+
+
+    // Step 2: Nueva contraseña (oculto inicialmente)
+    '<div id="fp-step2" style="display:none">'+
+    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px;color:#15803d;margin-bottom:16px;display:flex;gap:8px;align-items:center">'+
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'+
+    '<span id="fp-user-found-msg">Cuenta verificada.</span>'+
+    '</div>'+
+    '<div class="form-grid">'+
+    '<div class="form-group full"><label class="label">Nueva contraseña *</label>'+
+    '<input type="password" class="input" id="fp-pass-new" placeholder="Mínimo 8 caracteres" autocomplete="new-password"></div>'+
+    '<div class="form-group full"><label class="label">Confirmar contraseña *</label>'+
+    '<input type="password" class="input" id="fp-pass-confirm" placeholder="Repetir nueva contraseña" autocomplete="new-password"></div>'+
+    '</div>'+
+    '<div id="fp-pass-error" style="display:none;color:var(--red);font-size:12px;margin-top:6px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
+    '</div>'+
+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="fp-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="fp-btn">Verificar correo</button>'+
+    '</div></div>';
+
+  var existing=document.getElementById('forgot-modal');
+  if(existing)existing.remove();
+  document.getElementById('modal-container').appendChild(overlay);
+
+  overlay.querySelector('#fp-close').onclick=function(){overlay.remove();};
+  overlay.querySelector('#fp-cancel').onclick=function(){overlay.remove();};
+
+  var step=1;
+  var foundUser=null;
+
+  var fpBtn=overlay.querySelector('#fp-btn');
+  var emailInput=overlay.querySelector('#fp-email');
+  if(emailInput)setTimeout(function(){emailInput.focus();},100);
+
+  fpBtn.onclick=function(){
+    if(step===1){
+      // Verify email
+      var email=overlay.querySelector('#fp-email').value.trim().toLowerCase();
+      var errEl=overlay.querySelector('#fp-email-error');
+      errEl.style.display='none';
+      if(!email){errEl.textContent='Ingresa tu correo electrónico.';errEl.style.display='block';return;}
+      fpBtn.disabled=true;fpBtn.textContent='Verificando...';
+      sbGet('users','?email=eq.'+encodeURIComponent(email)+'&is_active=eq.true&select=id,full_name,email')
+        .then(function(users){
+          if(!users||!users.length){
+            errEl.textContent='No encontramos una cuenta activa con ese correo.';
+            errEl.style.display='block';
+            fpBtn.disabled=false;fpBtn.textContent='Verificar correo';
+            return;
+          }
+          foundUser=users[0];
+          // Move to step 2
+          step=2;
+          overlay.querySelector('#fp-step1').style.display='none';
+          overlay.querySelector('#fp-step2').style.display='block';
+          overlay.querySelector('#fp-user-found-msg').textContent=
+            'Cuenta verificada: '+foundUser.full_name+'. Ingresa tu nueva contraseña.';
+          fpBtn.disabled=false;fpBtn.textContent='Cambiar contraseña';
+          overlay.querySelector('#fp-pass-new').focus();
+        }).catch(function(e){
+          errEl.textContent='Error al verificar: '+String(e.message||e);
+          errEl.style.display='block';
+          fpBtn.disabled=false;fpBtn.textContent='Verificar correo';
+        });
+    }else{
+      // Change password
+      var passNew=overlay.querySelector('#fp-pass-new').value;
+      var passConfirm=overlay.querySelector('#fp-pass-confirm').value;
+      var passErrEl=overlay.querySelector('#fp-pass-error');
+      passErrEl.style.display='none';
+      if(!passNew){passErrEl.textContent='Ingresa la nueva contraseña.';passErrEl.style.display='block';return;}
+      if(passNew.length<8){passErrEl.textContent='Mínimo 8 caracteres.';passErrEl.style.display='block';return;}
+      if(passNew!==passConfirm){passErrEl.textContent='Las contraseñas no coinciden.';passErrEl.style.display='block';return;}
+      fpBtn.disabled=true;fpBtn.textContent='Guardando...';
+      sbRpc('hash_password',{input_password:passNew})
+        .then(function(hash){
+          return sbPatch('users','id=eq.'+foundUser.id,{password_hash:hash});
+        }).then(function(){
+          toast('Contraseña actualizada. Ya puedes iniciar sesión.');
+          overlay.remove();
+        }).catch(function(e){
+          passErrEl.textContent='Error: '+String(e.message||e);
+          passErrEl.style.display='block';
+          fpBtn.disabled=false;fpBtn.textContent='Cambiar contraseña';
+        });
+    }
+  };
+
+  // Enter key support
+  overlay.addEventListener('keydown',function(e){
+    if(e.key==='Enter')fpBtn.click();
+  });
+}
+
+// ── Admin reset password (desde Usuarios y permisos) ──
+function openAdminResetPasswordModal(userId, userName){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='admin-reset-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:400px">'+
+    '<div class="modal-header">'+
+    '<div class="modal-title">Restablecer contraseña</div>'+
+    '<button class="btn btn-ghost btn-sm" id="ar-close">✕</button></div>'+
+    '<div class="modal-body">'+
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:14px">'+
+    'Restablece la contraseña de <strong>'+userName+'</strong>.</div>'+
+    '<div class="form-grid">'+
+    '<div class="form-group full"><label class="label">Nueva contraseña *</label>'+
+    '<input type="password" class="input" id="ar-pass" placeholder="Nueva contraseña temporal" autocomplete="new-password"></div>'+
+    '<div class="form-group full"><label class="label">Confirmar contraseña *</label>'+
+    '<input type="password" class="input" id="ar-confirm" placeholder="Repetir contraseña" autocomplete="new-password"></div>'+
+    '</div>'+
+    '<div id="ar-error" style="display:none;color:var(--red);font-size:12px;margin-top:8px;padding:8px 12px;background:#fef2f2;border-radius:6px"></div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="ar-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="ar-save">Restablecer</button>'+
+    '</div></div>';
+
+  var existing=document.getElementById('admin-reset-modal');
+  if(existing)existing.remove();
+  document.getElementById('modal-container').appendChild(overlay);
+  overlay.querySelector('#ar-close').onclick=function(){overlay.remove();};
+  overlay.querySelector('#ar-cancel').onclick=function(){overlay.remove();};
+  overlay.querySelector('#ar-pass').focus();
+  overlay.querySelector('#ar-save').onclick=function(){
+    var pass=overlay.querySelector('#ar-pass').value;
+    var confirm=overlay.querySelector('#ar-confirm').value;
+    var errEl=overlay.querySelector('#ar-error');errEl.style.display='none';
+    if(!pass){errEl.textContent='Ingresa la nueva contraseña.';errEl.style.display='block';return;}
+    if(pass.length<8){errEl.textContent='Mínimo 8 caracteres.';errEl.style.display='block';return;}
+    if(pass!==confirm){errEl.textContent='Las contraseñas no coinciden.';errEl.style.display='block';return;}
+    var btn=overlay.querySelector('#ar-save');
+    btn.disabled=true;btn.textContent='Guardando...';
+    sbRpc('hash_password',{input_password:pass})
+      .then(function(hash){return sbPatch('users','id=eq.'+userId,{password_hash:hash});})
+      .then(function(){
+        toast('Contraseña de '+userName+' restablecida.');
+        overlay.remove();
+      }).catch(function(e){
+        errEl.textContent=String(e.message||e);errEl.style.display='block';
+        btn.disabled=false;btn.textContent='Restablecer';
+      });
+  };
+}
+
 
 function handleLogout(){doLogout();}
 

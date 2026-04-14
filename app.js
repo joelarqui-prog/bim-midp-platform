@@ -159,7 +159,20 @@ function fmtDateShort(d){return d?new Date(d).toLocaleDateString('es-PE',{day:'2
 function progColor(p){return p>=80?'var(--green)':p>=50?'var(--brand)':'var(--amber)';}
 function initials(n){return(n||'?').split(' ').slice(0,2).map(function(w){return w[0];}).join('').toUpperCase();}
 function loading(){return '<div class="loading"><div class="spinner"></div>Cargando desde Supabase...</div>';}
-function toast(msg,type){var t=document.getElementById('toast');t.textContent=msg;t.className='toast '+(type||'success')+' show';setTimeout(function(){t.className='toast';},3500);}
+function toast(msg,type){
+  try{
+    var t=document.getElementById('toast');
+    if(!t){
+      // Fallback: create toast element dynamically if missing from DOM
+      t=document.createElement('div');t.id='toast';t.className='toast';
+      document.body.appendChild(t);
+    }
+    t.textContent=String(msg||'');
+    t.className='toast '+(type||'success')+' show';
+    clearTimeout(window._toastTimer);
+    window._toastTimer=setTimeout(function(){t.className='toast';},3500);
+  }catch(e){console.warn('toast error:',e);}
+}
 function closeModal(id){var el=document.getElementById(id);if(el)el.remove();}
 function kpiCard(label,bg,color,val,sub){return '<div class="kpi"><div class="kpi-icon" style="background:'+bg+'"><svg viewBox="0 0 24 24" fill="none" stroke="'+color+'" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg></div><div><div class="kpi-label">'+label+'</div><div class="kpi-value" style="color:'+color+'">'+val+'</div><div class="kpi-sub">'+sub+'</div></div></div>';}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')document.getElementById('modal-container').innerHTML='';});
@@ -2131,7 +2144,13 @@ function saveUser(id){
       if(!email||!hash){toast('Correo y contrasena obligatorios.','error');throw new Error('missing');}
       return sbPost('users',Object.assign({},payload,{email:email,password_hash:hash,is_active:true,permissions:Object.assign({},DEFAULT_PERMS)}));
     });
-  p.then(function(){toast(id?'Usuario actualizado.':'Usuario creado.');closeModal('user-modal');renderUsers();})
+  // Capture modal element at call time for safe removal
+  var _userModal=document.getElementById('user-modal');
+  p.then(function(){
+    toast(id?'Usuario actualizado.':'Usuario creado.');
+    if(_userModal&&_userModal.parentNode)_userModal.remove();
+    renderUsers();
+  })
    .catch(function(e){if(e.message!=='missing')toast(String(e.message||e),'error');if(btn){btn.disabled=false;btn.textContent=id?'Actualizar usuario':'Crear usuario';}});
 }
 
@@ -2255,41 +2274,40 @@ function openPackageModal(pid){
   document.getElementById('modal-container').appendChild(overlay);
   overlay.querySelector('#pkg-close-btn').onclick=function(){overlay.remove();};
   overlay.querySelector('#pkg-cancel-btn').onclick=function(){overlay.remove();};
-  overlay.querySelector('#pkg-save-btn').onclick=function(){savePackage(pid||null);};
+  var _pkgSaveBtn=overlay.querySelector('#pkg-save-btn');
+  _pkgSaveBtn.onclick=function(){savePackage(pid||null,overlay,_pkgSaveBtn);};
   }); // end fetchP.then
 }
 
-function savePackage(pid){
-  // Use overlay reference to avoid getElementById failing after modal removal
-  var overlay=document.getElementById('pkg-modal');
-  var btn=overlay?overlay.querySelector('#pkg-save-btn'):document.getElementById('pkg-save-btn');
-  if(!btn)return;
-  var code=(overlay?overlay.querySelector('#pkg-code'):document.getElementById('pkg-code')).value.trim().toUpperCase();
-  var name=(overlay?overlay.querySelector('#pkg-name'):document.getElementById('pkg-name')).value.trim();
+function savePackage(pid,_overlay,_btn){
+  // Receive overlay and btn as parameters from openPackageModal to avoid DOM lookup issues
+  var overlay=_overlay||document.getElementById('pkg-modal');
+  var btn=_btn||(overlay?overlay.querySelector('#pkg-save-btn'):null);
+  if(!overlay){toast('Error: modal no encontrado.','error');return;}
+  var code=(overlay.querySelector('#pkg-code')||{value:''}).value.trim().toUpperCase();
+  var name=(overlay.querySelector('#pkg-name')||{value:''}).value.trim();
   if(!code||!name){toast('Codigo y nombre son obligatorios.','error');return;}
-  btn.disabled=true;btn.textContent='Guardando...';
-  // Helper to safely get value from field
-  function gv(id){var el=overlay?overlay.querySelector('#'+id):document.getElementById(id);return el?el.value||null:null;}
+  if(btn){btn.disabled=true;btn.textContent='Guardando...';}
+  function gv(id){var el=overlay.querySelector('#'+id);return el?el.value||null:null;}
   var payload={project_id:APP.project.id,code:code,name:name,
     description:gv('pkg-desc'),
     discipline:gv('pkg-disc'),
     responsible:gv('pkg-resp'),
     start_date:gv('pkg-start'),
     end_date:gv('pkg-end')};
-  // Add lod/loi only if fields exist in the form
-  var lodEl=overlay?overlay.querySelector('#pkg-lod'):document.getElementById('pkg-lod');
-  var loiEl=overlay?overlay.querySelector('#pkg-loi'):document.getElementById('pkg-loi');
+  var lodEl=overlay.querySelector('#pkg-lod');
+  var loiEl=overlay.querySelector('#pkg-loi');
   if(lodEl)payload.lod=lodEl.value||null;
   if(loiEl)payload.loi=loiEl.value||null;
   var req=pid?sbPatch('packages','id=eq.'+pid,payload):sbPost('packages',payload);
   req.then(function(){
     toast(pid?'Paquete actualizado.':'Paquete creado.');
-    if(overlay)overlay.remove();else closeModal('pkg-modal');
+    overlay.remove();
     sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
       .then(function(pkgs){APP.packages=pkgs;}).catch(function(){});
     loadPackages();
   }).catch(function(e){
-    toast(e.message,'error');
+    toast(String(e.message||e),'error');
     if(btn){btn.disabled=false;btn.textContent=pid?'Actualizar paquete':'Crear paquete';}
   });
 }
@@ -3738,349 +3756,6 @@ function exportProgressPDF(){
 }
 
 // ── EXPORTAR ENTREGABLES A PDF ──
-function exportDeliverablesPDF(){
-  if(!APP.project){toast('Sin proyecto activo.','error');return;}
-  var params='?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc';
-  if(APP.statusFilter)params+='&status=eq.'+APP.statusFilter;
-  if(APP.search)params+='&or=(code.ilike.*'+APP.search+'*,name.ilike.*'+APP.search+'*)';
-  Object.keys(APP.fieldFilters).forEach(function(k){
-    var v=APP.fieldFilters[k];
-    if(v)params+='&field_values->>'+k+'=eq.'+encodeURIComponent(v);
-  });
-  if(APP.packageFilter)params+='&work_package=eq.'+encodeURIComponent(APP.packageFilter);
-
-  sbGet('deliverables',params).then(function(items){
-    if(!items.length){toast('No hay entregables para exportar.','error');return;}
-
-    var now=new Date();
-    var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
-    var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-    var phases=getPhaseGroups();
-    var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
-
-    // Build phase date headers
-    var phaseHeaders=phases.map(function(ph){
-      return '<th style="background:'+ph.color+'20;color:'+ph.color+';font-size:9px;padding:5px 8px;white-space:nowrap">'+ph.label+' Fecha</th>';
-    }).join('');
-
-    // Build rows
-    var rows=items.map(function(d,i){
-      var fv=d.field_values||{};
-      var phaseCells=phases.map(function(ph){
-        var dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:'';
-        if(!dt)dt=(fv[ph.key+'__delivery_date'])||'';
-        return '<td style="font-size:9px;text-align:center;padding:4px 8px;white-space:nowrap">'+(dt?fmtDateShort(dt):'--')+'</td>';
-      }).join('');
-      var codeCells=codeSchemas().map(function(s){
-        return '<td style="font-size:9px;padding:4px 8px">'+(fv[s.key]||'--')+'</td>';
-      }).join('');
-      var rowBg=i%2===0?'#ffffff':'#f8fafc';
-      var STATUS_COLORS={pending:'#64748b',in_progress:'#3b82f6',for_review:'#f59e0b',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
-      var stColor=STATUS_COLORS[d.status]||'#64748b';
-      return '<tr style="background:'+rowBg+'">'+
-        '<td style="padding:4px 8px;font-size:9px;font-family:monospace;white-space:nowrap">'+
-        (d.url?'<a href="'+d.url+'" style="color:#2563eb">'+d.code+'</a>':d.code)+'</td>'+
-        '<td style="padding:4px 8px;font-size:10px;max-width:200px">'+d.name+'</td>'+
-        '<td style="padding:4px 8px;font-size:9px;text-align:center;color:'+stColor+';font-weight:600">'+( STATUS_LABELS[d.status]||d.status)+'</td>'+
-        codeCells+
-        '<td style="padding:4px 8px;font-size:9px">'+(d.work_package||'--')+'</td>'+
-        '<td style="padding:4px 8px;font-size:9px">'+(d.group_code||'--')+'</td>'+
-        phaseCells+
-        '</tr>';
-    }).join('');
-
-    // Code field headers
-    var codeHeaders=codeSchemas().map(function(s){
-      return '<th style="background:#1B3A6B;color:#fff;font-size:9px;padding:5px 8px;white-space:nowrap">'+s.name+'</th>';
-    }).join('');
-
-    // Active filters label
-    var filterParts=[];
-    if(APP.statusFilter)filterParts.push('Estado: '+STATUS_LABELS[APP.statusFilter]);
-    if(APP.search)filterParts.push('Búsqueda: "'+APP.search+'"');
-    if(APP.packageFilter)filterParts.push('Paquete: '+APP.packageFilter);
-    Object.entries(APP.fieldFilters).forEach(function(e){if(e[1])filterParts.push(e[0]+': '+e[1]);});
-    var filterLabel=filterParts.length?
-      '<div style="font-size:10px;color:#64748b;margin-bottom:10px">Filtros: '+filterParts.join(' · ')+'</div>':'';
-
-    var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
-      '<title>Entregables — '+APP.project.name+'</title>'+
-      '<style>'+
-      'body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#1e293b;font-size:11px}'+
-      'h1{color:#1B3A6B;font-size:16px;margin:0 0 3px}'+
-      '.meta{font-size:10px;color:#64748b}'+
-      '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
-      'table{width:100%;border-collapse:collapse;font-size:10px}'+
-      'th{background:#1B3A6B;color:#fff;padding:5px 8px;text-align:left;font-size:9px;font-weight:600;white-space:nowrap}'+
-      'td{border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
-      '.kpi-row{display:flex;gap:16px;margin-bottom:12px}'+
-      '.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 16px;text-align:center}'+
-      '.kpi-v{font-size:18px;font-weight:700;color:#1B3A6B}'+
-      '.kpi-l{font-size:9px;color:#64748b}'+
-      '@media print{body{padding:8px}@page{size:A4 landscape;margin:10mm}}'+
-      '</style></head><body>'+
-      '<div class="header">'+
-      '<div>'+
-      '<h1>Registro de Entregables MIDP</h1>'+
-      '<div style="color:#2E86C1;font-weight:600;font-size:12px">'+APP.project.name+'</div>'+
-      (APP.project.code?'<div class="meta">Código: '+APP.project.code+'</div>':'')+
-      '</div>'+
-      '<div style="text-align:right">'+
-      '<div class="meta">Fecha: <strong>'+dateStr+'</strong></div>'+
-      '<div class="meta">Hora: <strong>'+timeStr+'</strong></div>'+
-      '<div class="meta">Exportado por: <strong>'+(APP.user?APP.user.full_name:'—')+'</strong></div>'+
-      '</div></div>'+
-      '<div class="kpi-row">'+
-      '<div class="kpi"><div class="kpi-v">'+items.length+'</div><div class="kpi-l">Entregables</div></div>'+
-      '<div class="kpi"><div class="kpi-v">'+items.filter(function(d){return d.status==='approved'||d.status==='issued';}).length+'</div><div class="kpi-l">Completados</div></div>'+
-      '<div class="kpi"><div class="kpi-v">'+items.filter(function(d){return d.status==='pending';}).length+'</div><div class="kpi-l">Pendientes</div></div>'+
-      '<div class="kpi"><div class="kpi-v">'+items.filter(function(d){return d.status==='in_progress';}).length+'</div><div class="kpi-l">En progreso</div></div>'+
-      '</div>'+
-      filterLabel+
-      '<table><thead><tr>'+
-      '<th>Código</th><th>Nombre</th><th>Estado</th>'+
-      codeHeaders+
-      '<th style="background:#1B3A6B;color:#fff;font-size:9px;padding:5px 8px">Paquete</th>'+
-      '<th style="background:#1B3A6B;color:#fff;font-size:9px;padding:5px 8px">Grupo</th>'+
-      phaseHeaders+
-      '</tr></thead><tbody>'+rows+'</tbody></table>'+
-      '<div style="font-size:9px;color:#94a3b8;margin-top:12px;padding-top:8px;border-top:1px solid #e2e8f0;text-align:center">'+
-      'Unify Management · '+APP.project.name+' · Exportado el '+dateStr+' a las '+timeStr+' por '+(APP.user?APP.user.full_name:'—')+
-      '</div></body></html>';
-
-    var win=window.open('','_blank','width=1100,height=750');
-    if(!win){toast('Permite ventanas emergentes para exportar PDF.','error');return;}
-    win.document.write(html);
-    win.document.close();
-    win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
-    toast('PDF listo. Selecciona "Guardar como PDF" en el diálogo de impresión.');
-  }).catch(function(e){toast(e.message,'error');});
-}
-
-// ─────────────────────────────────────────────────────────────
-// EXPORTAR ENTREGABLES A PDF
-// ─────────────────────────────────────────────────────────────
-function exportDeliverablesPDF(){
-  // Load current visible deliverables
-  if(!APP.project){toast('Sin proyecto activo.','error');return;}
-  var params='?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=created_at.desc';
-  if(APP.statusFilter)params+='&status=eq.'+APP.statusFilter;
-  if(APP.search)params+='&or=(code.ilike.*'+APP.search+'*,name.ilike.*'+APP.search+'*)';
-  Object.keys(APP.fieldFilters).forEach(function(k){
-    var v=APP.fieldFilters[k];
-    if(v)params+='&field_values->>'+k+'=eq.'+encodeURIComponent(v);
-  });
-  if(APP.packageFilter)params+='&work_package=eq.'+encodeURIComponent(APP.packageFilter);
-
-  toast('Generando PDF...');
-  sbGet('deliverables',params).then(function(items){
-    var now=new Date();
-    var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
-    var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-    var userName=APP.user?APP.user.full_name:'—';
-    var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
-    var STATUS_COLORS={pending:'#64748b',in_progress:'#3b82f6',for_review:'#f59e0b',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
-
-    // Build phase columns
-    var phases=getPhaseGroups();
-    var phaseHeaders=phases.map(function(ph){
-      return '<th colspan="3" style="background:'+ph.color+'20;color:'+ph.color+';border-bottom:2px solid '+ph.color+';font-size:9px">'+ph.label+(ph.sub?' · '+ph.sub:'')+'</th>';
-    }).join('');
-    var phaseSubHeaders=phases.map(function(){
-      return '<th style="font-size:8px;color:#64748b">LOD</th><th style="font-size:8px;color:#64748b">LOI</th><th style="font-size:8px;color:#64748b">Fecha</th>';
-    }).join('');
-
-    var rows=items.map(function(d,i){
-      var phaseCells=phases.map(function(ph){
-        var lod=isKnownPhase(ph.key)?d[ph.key+'_lod']:'';
-        var loi=isKnownPhase(ph.key)?d[ph.key+'_loi']:'';
-        var dt=isKnownPhase(ph.key)?d[ph.key+'_delivery_date']:'';
-        return '<td style="font-size:9px;text-align:center;color:'+(lod?'#1B3A6B':'#94a3b8')+'">'+(lod||'--')+'</td>'+
-               '<td style="font-size:9px;text-align:center;color:'+(loi?'#1B3A6B':'#94a3b8')+'">'+(loi||'--')+'</td>'+
-               '<td style="font-size:9px;text-align:center;color:#64748b">'+(dt?fmtDateShort(dt):'--')+'</td>';
-      }).join('');
-      var bg=i%2===0?'#ffffff':'#f8fafc';
-      var statusColor=STATUS_COLORS[d.status]||'#64748b';
-      var fv=d.field_values||{};
-      return '<tr style="background:'+bg+'">'+
-        '<td style="font-size:8px;padding:4px 6px;font-family:monospace;color:#1B3A6B;white-space:nowrap">'+d.code+'</td>'+
-        '<td style="font-size:9px;padding:4px 6px;max-width:180px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+d.name+'</td>'+
-        '<td style="font-size:9px;padding:4px 6px;text-align:center"><span style="background:'+statusColor+'20;color:'+statusColor+';border-radius:3px;padding:1px 5px;font-size:8px;font-weight:600">'+( STATUS_LABELS[d.status]||d.status)+'</span></td>'+
-        '<td style="font-size:9px;padding:4px 6px;color:#64748b;white-space:nowrap">'+(d.work_package||'--')+'</td>'+
-        phaseCells+
-        '</tr>';
-    }).join('');
-
-    // Filter summary
-    var filters=[];
-    if(APP.statusFilter)filters.push('Estado: '+STATUS_LABELS[APP.statusFilter]);
-    if(APP.search)filters.push('Búsqueda: "'+APP.search+'"');
-    if(APP.packageFilter)filters.push('Paquete: '+APP.packageFilter);
-    Object.entries(APP.fieldFilters).forEach(function(e){if(e[1])filters.push(e[0]+': '+e[1]);});
-
-    var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
-      '<title>Entregables — '+APP.project.name+'</title>'+
-      '<style>'+
-      'body{font-family:Arial,sans-serif;margin:0;padding:16px;color:#1e293b;font-size:11px}'+
-      'h1{color:#1B3A6B;font-size:16px;margin:0 0 2px}'+
-      '.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
-      '.meta{font-size:9px;color:#64748b;text-align:right;line-height:1.6}'+
-      '.summary{display:flex;gap:16px;margin-bottom:12px;padding:8px 12px;background:#f8fafc;border-radius:6px;font-size:10px}'+
-      '.sum-item{display:flex;flex-direction:column;align-items:center}'+
-      '.sum-val{font-size:18px;font-weight:700;color:#1B3A6B}'+
-      '.sum-lbl{font-size:9px;color:#64748b}'+
-      'table{width:100%;border-collapse:collapse;font-size:10px}'+
-      'th{background:#1B3A6B;color:#fff;padding:5px 6px;font-size:9px;font-weight:600;text-align:left;white-space:nowrap}'+
-      'td{padding:4px 6px;border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
-      '.filter-tag{display:inline-block;background:#eff6ff;color:#2563eb;border-radius:3px;padding:1px 6px;font-size:9px;margin-right:4px}'+
-      '@media print{body{padding:8px}.no-print{display:none}@page{size:A4 landscape;margin:10mm}}'+
-      '</style></head><body>'+
-      '<div class="header">'+
-      '<div>'+
-      '<h1>Registro de Entregables MIDP</h1>'+
-      '<div style="font-size:11px;color:#2E86C1;font-weight:600">'+APP.project.name+(APP.project.code?' · '+APP.project.code:'')+'</div>'+
-      (filters.length?'<div style="margin-top:4px">'+filters.map(function(f){return '<span class="filter-tag">'+f+'</span>';}).join('')+'</div>':'')+
-      '</div>'+
-      '<div class="meta">'+
-      '<div>'+dateStr+'  '+timeStr+'</div>'+
-      '<div>Exportado por: <strong>'+userName+'</strong></div>'+
-      '<div>'+items.length+' entregable'+(items.length!==1?'s':'')+' mostrado'+(items.length!==1?'s':'')+'</div>'+
-      '</div></div>'+
-      '<div class="summary">'+
-      '<div class="sum-item"><div class="sum-val">'+items.length+'</div><div class="sum-lbl">Total</div></div>'+
-      Object.entries(STATUS_LABELS).map(function(e){
-        var cnt=items.filter(function(d){return d.status===e[0];}).length;
-        if(!cnt)return '';
-        return '<div class="sum-item"><div class="sum-val" style="color:'+STATUS_COLORS[e[0]]+'">'+cnt+'</div><div class="sum-lbl">'+e[1]+'</div></div>';
-      }).join('')+
-      '</div>'+
-      '<table>'+
-      '<thead>'+
-      '<tr>'+
-      '<th rowspan="2">Código</th>'+
-      '<th rowspan="2">Nombre</th>'+
-      '<th rowspan="2">Estado</th>'+
-      '<th rowspan="2">Paquete</th>'+
-      phaseHeaders+
-      '</tr>'+
-      '<tr>'+phaseSubHeaders+'</tr>'+
-      '</thead>'+
-      '<tbody>'+rows+'</tbody>'+
-      '</table>'+
-      '<div style="font-size:8px;color:#94a3b8;margin-top:12px;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px">'+
-      'Unify Management · '+APP.project.name+' · '+dateStr+' '+timeStr+' · '+userName+
-      '</div></body></html>';
-
-    var win=window.open('','_blank','width=1100,height=750');
-    if(!win){toast('Habilita ventanas emergentes para exportar PDF.','error');return;}
-    win.document.write(html);
-    win.document.close();
-    win.onload=function(){win.focus();setTimeout(function(){win.print();},600);};
-  }).catch(function(e){toast('Error: '+e.message,'error');});
-}
-
-// ──────────────────────────────────────────────
-// EXPORTAR ENTREGABLES A PDF
-// ──────────────────────────────────────────────
-function exportDeliverablesPDF(){
-  // Use the current loaded deliverables (window._lastDeliverables or re-read from DOM)
-  var items=window._lastDeliverables||[];
-  if(!items.length){toast('No hay entregables para exportar.','error');return;}
-
-  var now=new Date();
-  var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
-  var timeStr=now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
-  var userName=APP.user?APP.user.full_name||APP.user.email:'—';
-  var proj=APP.project?APP.project.name:'—';
-  var projCode=APP.project?APP.project.code:'';
-
-  // Active filters label
-  var filters=[];
-  if(APP.statusFilter)filters.push('Estado: '+APP.statusFilter);
-  if(APP.packageFilter)filters.push('Paquete: '+APP.packageFilter);
-  if(APP.search)filters.push('Búsqueda: '+APP.search);
-  Object.keys(APP.fieldFilters||{}).forEach(function(k){if(APP.fieldFilters[k])filters.push(k+': '+APP.fieldFilters[k]);});
-
-  var STATUS_LABELS={pending:'Pendiente',in_progress:'En progreso',for_review:'En revisión',approved:'Aprobado',issued:'Emitido',rejected:'Rechazado'};
-  var STATUS_COLORS={pending:'#64748b',in_progress:'#2563eb',for_review:'#d97706',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
-
-  // Code field headers
-  var codSchemas=codeSchemas();
-  var genSchemas=generalSchemas();
-  var phases=getPhaseGroups();
-
-  // Build header row
-  var thCode=codSchemas.map(function(s){return '<th>'+s.name+'</th>';}).join('');
-  var thGen='<th>Nombre</th><th>Estado</th><th>Paquete</th>';
-  var thPhase=phases.map(function(ph){
-    return visiblePhaseSchemas(ph.key).map(function(s){
-      var short=s.name.replace(ph.label,'').replace('-','').trim()||s.name;
-      return '<th style="color:'+ph.color+'">'+ph.label+'<br><span style="font-weight:400;font-size:8px">'+short+'</span></th>';
-    }).join('');
-  }).join('');
-
-  // Build data rows
-  var rows=items.map(function(d,i){
-    var bg=i%2===0?'#ffffff':'#f8fafc';
-    var fv=d.field_values||{};
-
-    var tdCode=codSchemas.map(function(s){return '<td>'+( fv[s.key]||'—')+'</td>';}).join('');
-    var status=d.status||'pending';
-    var tdGen='<td style="max-width:200px;word-break:break-word">'+d.name+'</td>'+
-      '<td><span style="background:'+STATUS_COLORS[status]+'20;color:'+STATUS_COLORS[status]+';padding:2px 6px;border-radius:4px;font-size:9px;font-weight:600">'+
-      (STATUS_LABELS[status]||status)+'</span></td>'+
-      '<td>'+(d.work_package||'—')+'</td>';
-    var tdPhase=phases.map(function(ph){
-      return visiblePhaseSchemas(ph.key).map(function(s){
-        var val=getFieldVal(d,s)||'—';
-        if(s.field_type==='date'&&val&&val!=='—')val=fmtDateShort(val);
-        return '<td style="font-size:9px">'+val+'</td>';
-      }).join('');
-    }).join('');
-
-    return '<tr style="background:'+bg+'"><td style="color:#94a3b8;font-size:9px">'+(i+1)+'</td>'+
-      '<td style="font-family:monospace;font-size:9px;white-space:nowrap">'+d.code+'</td>'+
-      tdCode+tdGen+tdPhase+'</tr>';
-  }).join('');
-
-  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
-    '<title>Entregables — '+proj+'</title>'+
-    '<style>'+
-    'body{font-family:Arial,sans-serif;font-size:10px;color:#1e293b;margin:0;padding:16px}'+
-    'h1{color:#1B3A6B;font-size:16px;margin:0 0 2px}'+
-    '.sub{font-size:11px;color:#2E86C1;margin:0 0 12px}'+
-    '.meta{font-size:9px;color:#64748b;margin-bottom:12px;display:flex;justify-content:space-between}'+
-    'table{border-collapse:collapse;width:100%;font-size:9px}'+
-    'th{background:#1B3A6B;color:#fff;padding:5px 6px;text-align:left;white-space:nowrap;font-size:8px;font-weight:600}'+
-    'td{padding:4px 6px;border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
-    '.filters{background:#f1f5f9;border-radius:4px;padding:6px 10px;font-size:9px;color:#475569;margin-bottom:10px}'+
-    'footer{margin-top:16px;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;text-align:center}'+
-    '@media print{@page{size:A3 landscape;margin:12mm}body{padding:0}}'+
-    '</style></head><body>'+
-    '<h1>Entregables MIDP</h1>'+
-    '<p class="sub">'+proj+(projCode?' · '+projCode:'')+'</p>'+
-    '<div class="meta">'+
-    '<span>Total: <strong>'+items.length+'</strong> entregable(s)'+(filters.length?' · Filtros: '+filters.join(', '):'')+'</span>'+
-    '<span>Exportado por <strong>'+userName+'</strong> · '+dateStr+' '+timeStr+'</span>'+
-    '</div>'+
-    (filters.length?'<div class="filters">Filtros activos: '+filters.join(' | ')+'</div>':'')+
-    '<table><thead><tr>'+
-    '<th>#</th><th>Código</th>'+thCode+thGen+thPhase+
-    '</tr></thead><tbody>'+rows+'</tbody></table>'+
-    '<footer>Unify Management · '+proj+' · Generado el '+dateStr+' a las '+timeStr+' por '+userName+'</footer>'+
-    '</body></html>';
-
-  var win=window.open('','_blank','width=1100,height=750');
-  if(!win){toast('Permite ventanas emergentes para exportar.','error');return;}
-  win.document.write(html);
-  win.document.close();
-  win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
-  toast('PDF listo — usa Guardar como PDF en el diálogo de impresión.');
-}
-
-// ─────────────────────────────────────────────────────────────
-// EXPORTAR ENTREGABLES A PDF
-// ─────────────────────────────────────────────────────────────
 function exportDeliverablesPDF(){
   var allDels=window._lastDeliverables;
   if(!allDels||!allDels.length){toast('No hay entregables para exportar.','error');return;}

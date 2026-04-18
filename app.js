@@ -1360,15 +1360,56 @@ function openDeliverableModal(id){
       '<input type="number" class="input" id="del-units-fixed" min="0" step="0.5" value="'+(d&&window._delUnits?window._delUnits:1)+'" placeholder="1">'+
       '<div style="font-size:9px;color:var(--text3);margin-top:3px">Mayor peso = mayor impacto en el % de avance global del proyecto</div></div>'+
 
-      // Modelo asociado — siempre visible
-      '<div class="form-group"><label class="label">🏗️ Modelo BIM asociado</label>'+
-      '<select class="input" id="del-model-fixed">'+
-      '<option value="">Sin modelo asociado</option>'+
-      (window._modDels||[]).map(function(m){
-        var isSelected=d&&(d.riba2_doc_assoc===m.code||d.riba3_doc_assoc===m.code||d.riba4_doc_assoc===m.code);
-        return '<option value="'+m.code+'"'+(isSelected?' selected':'')+'>'+m.code+' — '+m.name+'</option>';
-      }).join('')+
-      '</select><div style="font-size:9px;color:var(--text3);margin-top:3px">Se asignará al hito más reciente sin modelo</div></div>'+
+      // Modelo asociado — siempre visible (solo para no-modelos)
+      // Para modelos: mostrar campos de federación
+      (function(){
+        var isMod=false;
+        var cfg=getModelConfig();
+        if(d&&d.field_values&&d.field_values[cfg.fieldKey]===cfg.fieldValue)isMod=true;
+        // Check from form fields too
+        document.querySelectorAll('.schema-field').forEach(function(el){
+          if(el.dataset.key===cfg.fieldKey&&el.value===cfg.fieldValue)isMod=true;
+        });
+        if(isMod){
+          // Show federation fields instead of regular model association
+          return '<div style="border:1px solid #8B5CF620;border-radius:8px;padding:14px;background:#f5f3ff08;margin-bottom:8px">'+
+            '<div style="font-size:10px;font-weight:700;color:#8B5CF6;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">🏗️ Estrategia de Federación</div>'+
+            '<div class="form-grid">'+
+            // Nivel de federación
+            '<div class="form-group"><label class="label">Nivel de federación *</label>'+
+            '<select class="input" id="del-fed-level">'+
+            '<option value="">Seleccionar...</option>'+
+            ['N1 — Federado General de Fase',
+             'N2 — Federado de Disciplina',
+             'N3 — Agrupa Paquetes',
+             'N4 — Modelo de Sector'].map(function(v){
+              var key=v.split(' ')[0];
+              var fv=d&&d.field_values?d.field_values.nivel_federacion:'';
+              return '<option value="'+key+'"'+(fv===key?' selected':'')+'>'+v+'</option>';
+            }).join('')+
+            '</select></div>'+
+            // Modelo padre
+            '<div class="form-group"><label class="label">Modelo padre (federación)</label>'+
+            '<select class="input" id="del-fed-parent">'+
+            '<option value="">Sin modelo padre (es N1)</option>'+
+            (window._modDels||[]).map(function(m){
+              var parentCode=d&&d.field_values?d.field_values.modelo_padre:'';
+              return '<option value="'+m.code+'"'+(parentCode===m.code?' selected':'')+'>'+m.code+' — '+m.name+'</option>';
+            }).join('')+
+            '</select>'+
+            '<div style="font-size:9px;color:var(--text3);margin-top:3px">N2 se asocia a un N1 · N3 a un N2 · N4 a un N3</div></div>'+
+            '</div></div>';
+        }else{
+          return '<div class="form-group"><label class="label">🏗️ Modelo BIM asociado</label>'+
+            '<select class="input" id="del-model-fixed">'+
+            '<option value="">Sin modelo asociado</option>'+
+            (window._modDels||[]).map(function(m){
+              var isSelected=d&&(d.riba2_doc_assoc===m.code||d.riba3_doc_assoc===m.code||d.riba4_doc_assoc===m.code);
+              return '<option value="'+m.code+'"'+(isSelected?' selected':'')+'>'+m.code+' — '+m.name+'</option>';
+            }).join('')+
+            '</select><div style="font-size:9px;color:var(--text3);margin-top:3px">Se asignará al hito más reciente sin modelo</div></div>';
+        }
+      })()+
 
       '</div>'+
 
@@ -1451,6 +1492,11 @@ function saveDeliverable(id){
     var fixedUnitsVal=fixedUnitsEl?parseFloat(fixedUnitsEl.value)||1:1;
     var fixedModelEl=document.getElementById('del-model-fixed');
     var fixedModelVal=fixedModelEl?fixedModelEl.value||null:null;
+    // Federation fields (for MOD type deliverables)
+    var fedLevelEl=document.getElementById('del-fed-level');
+    var fedParentEl=document.getElementById('del-fed-parent');
+    var fedLevel=fedLevelEl?fedLevelEl.value||null:null;
+    var fedParent=fedParentEl?fedParentEl.value||null:null;
 
     var payload={
       project_id:APP.project.id,code:code,name:name,field_values:fields,created_by:APP.user.id,
@@ -1486,6 +1532,13 @@ function saveDeliverable(id){
     });
     if(Object.keys(customHitoFV).length>0){
       payload.field_values=Object.assign({},fields,customHitoFV);
+    }
+    // Save federation level and parent model into field_values
+    if(fedLevel){
+      payload.field_values=Object.assign({},payload.field_values||fields,{nivel_federacion:fedLevel});
+    }
+    if(fedParent){
+      payload.field_values=Object.assign({},payload.field_values||fields,{modelo_padre:fedParent});
     }
     var p=id
       ?sbGet('deliverables','?id=eq.'+id+'&select=version').then(function(r){payload.version=((r[0]?r[0].version:1)||1)+1;return sbPatch('deliverables','id=eq.'+id,payload);})
@@ -2740,192 +2793,275 @@ function openRenameHitoModal(groupId,currentLabel){
 // ══════════════════════════════════════════════════
 
 function renderModels(){
-  // Config button (admin only)
   document.getElementById('topbar-actions').innerHTML=
-    isAdminLevel()?'<button class="btn btn-sm" onclick="openModelConfigModal()">⚙ Configurar filtro</button>':'';
-
+    isAdminLevel()?'<button class="btn btn-sm" onclick="openModelFedConfigModal()">⚙ Configurar</button>':''+''+
+    (can('can_create_deliverables')?'<button class="btn btn-primary btn-sm" onclick="openDeliverableModal()">+ Nuevo modelo</button>':'');
   document.getElementById('content').innerHTML=loading();
   if(!APP.project)return;
 
+  // Load ALL models (tipo_documento = MOD or configured key)
   var cfg=getModelConfig();
   sbGet('deliverables',
     '?project_id=eq.'+APP.project.id+
     '&is_active=eq.true'+
-    getModelFilterParam()+
+    '&field_values->>'+encodeURIComponent(cfg.fieldKey)+'=eq.'+encodeURIComponent(cfg.fieldValue)+
     '&order=code.asc'
-  ).then(function(models){
-    if(!models.length){
+  ).then(function(allModels){
+    if(!allModels.length){
       document.getElementById('content').innerHTML=
-        '<div class="empty">'+
-        '<div class="empty-icon">🏗️</div>'+
+        '<div class="empty"><div class="empty-icon">🏗️</div>'+
         '<div class="empty-title">Sin modelos registrados</div>'+
-        '<div class="empty-desc">Los entregables que cumplan con el filtro configurado aparecerán aquí.<br>'+
-        'Filtro actual: <strong>'+cfg.fieldKey+' = '+cfg.fieldValue+'</strong>'+
-        (isAdminLevel()?'<br><a href="#" onclick="openModelConfigModal();return false;" style="font-size:11px">Cambiar filtro</a>':'')+
-        '</div>'+
-        '</div>';
+        '<div class="empty-desc">Registra entregables de tipo modelo ('+cfg.fieldValue+') para ver la Estrategia de Federación.</div></div>';
       return;
     }
 
-    // Group by discipline
-    var byDisc={};
-    models.forEach(function(m){
-      var disc=(m.field_values&&m.field_values.disciplina)||'Sin disciplina';
-      if(!byDisc[disc])byDisc[disc]=[];
-      byDisc[disc].push(m);
-    });
+    // Separate by federation level
+    function getLevel(m){return (m.field_values&&m.field_values.nivel_federacion)||'N1';}
+    function getParent(m){return (m.field_values&&m.field_values.modelo_padre)||'';}
+    function getPhase(m){return (m.field_values&&m.field_values.fase_proyecto)||'';}
+    function getDisc(m){return (m.field_values&&m.field_values.disciplina)||'';}
 
-    var html='<div style="margin-bottom:14px;display:flex;align-items:center;gap:10px">'+
-      '<div style="font-size:12px;color:var(--text3)">'+models.length+' modelo'+(models.length>1?'s':'')+' registrado'+(models.length>1?'s':'')+' en este proyecto</div>'+
-      '</div>';
+    var n1=allModels.filter(function(m){return getLevel(m)==='N1';});
+    var n2=allModels.filter(function(m){return getLevel(m)==='N2';});
+    var n3=allModels.filter(function(m){return getLevel(m)==='N3';});
+    var n4=allModels.filter(function(m){return getLevel(m)==='N4';});
 
-    Object.entries(byDisc).forEach(function(entry){
-      var disc=entry[0]; var items=entry[1];
-      html+='<div style="margin-bottom:20px">'+
-        '<div style="font-size:11px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+
-        '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand)"></span>'+disc+
-        ' <span style="font-size:9px;color:var(--text3);font-weight:400;text-transform:none">('+items.length+' modelo'+(items.length>1?'s':'')+')</span></div>'+
-        '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">'+
-        items.map(function(m){
-          // Get deliverables associated to this model
-          var assocCount=0; // Will be loaded async if needed
-          var statusInfo=STATUS_CFG[m.status]||STATUS_CFG.pending;
-          // Build phase info
-          var phaseInfo=getPhaseGroups().map(function(ph){
-            var lod=m[ph.key+'_lod']||m[(ph.key.indexOf(ph.key+'_')===0?ph.key+'_lod':ph.key+'_lod')];
-            var date=m[ph.key+'_delivery_date'];
-            if(!lod&&!date)return '';
-            return '<span style="font-size:9px;color:'+ph.color+';font-weight:600">'+ph.label+
-              (lod?' LOD'+lod:'')+(date?' · '+fmtDateShort(date):'')+
-              '</span>';
-          }).filter(Boolean).join(' · ');
+    // State: which cards are selected at each level
+    var sel={n1:null,n2:null,n3:null}; // codes of selected models
 
-          return '<div class="card" style="padding:14px;border-left:3px solid var(--brand)">'+
-            '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">'+
-            // Code — clickable if url
-            (m.url?
-              '<a href="'+m.url+'" target="_blank" class="code-chip" style="font-size:10px;text-decoration:none;color:var(--brand)" title="Abrir en repositorio">'+m.code+' ↗</a>':
-              '<span class="code-chip" style="font-size:10px">'+m.code+'</span>')+
-            '<span class="badge '+statusInfo.cls+'" style="font-size:9px">'+statusInfo.label+'</span>'+
+    function renderFederationView(){
+      var container=document.getElementById('content');
+      if(!container)return;
+
+      // ── Layout: 4 columns ──
+      var html=
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;height:100%;min-height:0;overflow:hidden">'+
+
+        // ── COLUMNA 1: Niveles de Fase (N1) ──
+        '<div style="display:flex;flex-direction:column;gap:0;min-height:0">'+
+        '<div style="font-size:9px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:.1em;padding:0 0 8px;display:flex;align-items:center;gap:6px">'+
+        '<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--brand);color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">1</span>'+
+        'Federado General</div>'+
+        '<div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px">'+
+        (n1.length?n1.map(function(m){
+          var phase=getPhase(m);
+          var isSelected=sel.n1===m.code;
+          var phColor=getPhaseColor(phase);
+          return '<div class="fed-card fed-n1'+(isSelected?' fed-selected':'')+'" '+
+            'data-code="'+m.code+'" data-level="n1" style="border-left:3px solid '+phColor+'"'+
+            (isSelected?';outline:2px solid '+phColor+';outline-offset:1px':'')+'>'+
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'+
+            '<span style="font-size:9px;font-weight:700;color:'+phColor+';text-transform:uppercase">'+phase+'</span>'+
+            statusDot(m.status)+
             '</div>'+
-            '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;line-height:1.3">'+m.name+'</div>'+
-            (m.description?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.4">'+m.description+'</div>':'')+
-            (phaseInfo?'<div style="margin-bottom:8px">'+phaseInfo+'</div>':'')+
-            (m.work_package?'<div style="font-size:9px;color:var(--text3)">📦 '+m.work_package+'</div>':'')+
-            // Associated deliverables
-            '<div id="assoc-'+m.id+'" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border2);font-size:10px;color:var(--text3)">'+
-            '<span>Cargando entregables asociados...</span></div>'+
-            (can('can_edit_deliverables')?
-              '<div style="margin-top:8px">'+
-              '<button class="btn btn-ghost btn-sm" onclick="openDeliverableModal(\''+m.id+'\')" style="font-size:10px;width:100%">✎ Editar modelo</button>'+
-              '</div>':'')+
-            '</div>';
-        }).join('')+
-        '</div></div>';
-    });
+            '<div class="code-chip" style="font-size:9px;margin-bottom:4px">'+m.code+'</div>'+
+            '<div style="font-size:11px;font-weight:600;color:var(--text);line-height:1.3">'+m.name+'</div>'+
+            (m.url?'<a href="'+m.url+'" target="_blank" style="font-size:9px;color:var(--brand);margin-top:4px;display:block">↗ Abrir modelo</a>':'')+
+            '<div style="font-size:9px;color:var(--text3);margin-top:4px">'+
+            n2.filter(function(x){return getParent(x)===m.code;}).length+' modelos de disciplina'+
+            '</div></div>';
+        }).join(''):
+        '<div style="padding:16px 10px;text-align:center;font-size:11px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">Sin modelos N1</div>')+
+        '</div></div>'+
 
-    document.getElementById('content').innerHTML=html;
+        // ── COLUMNA 2: Federados de Disciplina (N2) ──
+        '<div style="display:flex;flex-direction:column;gap:0;min-height:0">'+
+        '<div style="font-size:9px;font-weight:700;color:#10B981;text-transform:uppercase;letter-spacing:.1em;padding:0 0 8px;display:flex;align-items:center;gap:6px">'+
+        '<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#10B981;color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">2</span>'+
+        'Federado Disciplina</div>'+
+        '<div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px" id="fed-col2">'+
+        (sel.n1?
+          (function(){
+            var filtered=n2.filter(function(m){return getParent(m)===sel.n1;});
+            return filtered.length?filtered.map(function(m){
+              var disc=getDisc(m);
+              var isSelected=sel.n2===m.code;
+              return '<div class="fed-card fed-n2'+(isSelected?' fed-selected':'')+'" '+
+                'data-code="'+m.code+'" data-level="n2" style="border-left:3px solid #10B981'+(isSelected?';outline:2px solid #10B981;outline-offset:1px':'')+'">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'+
+                '<span style="font-size:9px;font-weight:700;color:#10B981;text-transform:uppercase">'+disc+'</span>'+
+                statusDot(m.status)+
+                '</div>'+
+                '<div class="code-chip" style="font-size:9px;margin-bottom:4px">'+m.code+'</div>'+
+                '<div style="font-size:11px;font-weight:600;color:var(--text);line-height:1.3">'+m.name+'</div>'+
+                (m.url?'<a href="'+m.url+'" target="_blank" style="font-size:9px;color:var(--brand);margin-top:4px;display:block">↗ Abrir modelo</a>':'')+
+                '<div style="font-size:9px;color:var(--text3);margin-top:4px">'+
+                n3.filter(function(x){return getParent(x)===m.code;}).length+' modelos de paquetes'+
+                '</div></div>';
+            }).join(''):
+            '<div style="padding:16px 10px;text-align:center;font-size:11px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">Sin modelos N2 asociados</div>';
+          })():
+          '<div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text3)">← Selecciona una fase</div>')+
+        '</div></div>'+
 
-    // Load associated deliverables for each model async
-    models.forEach(function(m){
-      sbGet('deliverables',
-        '?project_id=eq.'+APP.project.id+
-        '&is_active=eq.true'+
-        '&select=id,code,name,status'+
-        // Find deliverables where any phase doc_assoc = this model's code
-        '&or=(riba2_doc_assoc.eq.'+encodeURIComponent(m.code)+
-        ',riba3_doc_assoc.eq.'+encodeURIComponent(m.code)+
-        ',riba4_doc_assoc.eq.'+encodeURIComponent(m.code)+')'
-      ).then(function(assoc){
-        var el=document.getElementById('assoc-'+m.id);
-        if(!el)return;
-        if(!assoc.length){
-          el.innerHTML='<span style="color:var(--text3)">Sin entregables asociados</span>';
-        }else{
-          el.innerHTML='<div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px">'+
-            assoc.length+' entregable'+(assoc.length>1?'s':'')+' asociado'+(assoc.length>1?'s':'')+':</div>'+
-            assoc.map(function(d){
-              return '<div style="display:flex;align-items:center;gap:6px;margin-top:3px">'+
-                '<span class="code-chip" style="font-size:9px">'+d.code+'</span>'+
-                '<span style="font-size:10px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.name+'</span>'+
-                statusBadge(d.status)+
+        // ── COLUMNA 3: Modelos que agrupan paquetes (N3) ──
+        '<div style="display:flex;flex-direction:column;gap:0;min-height:0">'+
+        '<div style="font-size:9px;font-weight:700;color:#F59E0B;text-transform:uppercase;letter-spacing:.1em;padding:0 0 8px;display:flex;align-items:center;gap:6px">'+
+        '<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#F59E0B;color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</span>'+
+        'Agrupa Paquetes</div>'+
+        '<div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px" id="fed-col3">'+
+        (sel.n2?
+          (function(){
+            var filtered=n3.filter(function(m){return getParent(m)===sel.n2;});
+            return filtered.length?filtered.map(function(m){
+              var isSelected=sel.n3===m.code;
+              return '<div class="fed-card fed-n3'+(isSelected?' fed-selected':'')+'" '+
+                'data-code="'+m.code+'" data-level="n3" style="border-left:3px solid #F59E0B'+(isSelected?';outline:2px solid #F59E0B;outline-offset:1px':'')+'">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'+
+                statusDot(m.status)+
+                '</div>'+
+                '<div class="code-chip" style="font-size:9px;margin-bottom:4px">'+m.code+'</div>'+
+                '<div style="font-size:11px;font-weight:600;color:var(--text);line-height:1.3">'+m.name+'</div>'+
+                (m.url?'<a href="'+m.url+'" target="_blank" style="font-size:9px;color:var(--brand);margin-top:4px;display:block">↗ Abrir modelo</a>':'')+
+                (m.description?'<div style="font-size:10px;color:var(--text3);margin-top:4px">'+m.description+'</div>':'')+
+                '<div style="font-size:9px;color:var(--text3);margin-top:4px">'+
+                n4.filter(function(x){return getParent(x)===m.code;}).length+' modelos de sector'+
+                '</div></div>';
+            }).join(''):
+            '<div style="padding:16px 10px;text-align:center;font-size:11px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">Sin modelos N3 asociados</div>';
+          })():
+          '<div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text3)">← Selecciona disciplina</div>')+
+        '</div></div>'+
+
+        // ── COLUMNA 4: Modelos de Sector (N4) ──
+        '<div style="display:flex;flex-direction:column;gap:0;min-height:0">'+
+        '<div style="font-size:9px;font-weight:700;color:#8B5CF6;text-transform:uppercase;letter-spacing:.1em;padding:0 0 8px;display:flex;align-items:center;gap:6px">'+
+        '<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#8B5CF6;color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">4</span>'+
+        'Modelos de Sector</div>'+
+        '<div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px" id="fed-col4">'+
+        (sel.n3?
+          (function(){
+            var filtered=n4.filter(function(m){return getParent(m)===sel.n3;});
+            return filtered.length?filtered.map(function(m){
+              return '<div class="fed-card fed-n4" '+
+                'data-code="'+m.code+'" data-level="n4" style="border-left:3px solid #8B5CF6">' +
+                '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'+
+                statusDot(m.status)+
+                '</div>'+
+                '<div class="code-chip" style="font-size:9px;margin-bottom:4px">'+m.code+'</div>'+
+                '<div style="font-size:11px;font-weight:600;color:var(--text);line-height:1.3">'+m.name+'</div>'+
+                (m.url?'<a href="'+m.url+'" target="_blank" style="font-size:9px;color:var(--brand);margin-top:4px;display:block">↗ Abrir modelo</a>':'')+
+                (m.description?'<div style="font-size:10px;color:var(--text3);margin-top:4px">'+m.description+'</div>':'')+
                 '</div>';
-            }).join('');
-        }
-      }).catch(function(){});
-    });
+            }).join(''):
+            '<div style="padding:16px 10px;text-align:center;font-size:11px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">Sin modelos N4 asociados</div>';
+          })():
+          '<div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text3)">← Selecciona paquetes</div>')+
+        '</div></div>'+
+
+        '</div>'; // end grid
+
+      container.innerHTML=html;
+
+      // ── Attach click events to all federation cards ──
+      container.querySelectorAll('.fed-card').forEach(function(card){
+        card.addEventListener('click',function(){
+          var code=card.dataset.code;
+          var level=card.dataset.level;
+          if(level==='n1'){
+            sel.n1=sel.n1===code?null:code;
+            sel.n2=null;sel.n3=null;
+          }else if(level==='n2'){
+            sel.n2=sel.n2===code?null:code;
+            sel.n3=null;
+          }else if(level==='n3'){
+            sel.n3=sel.n3===code?null:code;
+          }
+          renderFederationView();
+        });
+      });
+    }
+
+    // Set nav padding for this view (like deliverables)
+    var contentEl=document.getElementById('content');
+    if(contentEl){
+      contentEl.style.padding='16px';
+      contentEl.style.overflow='auto';
+    }
+
+    renderFederationView();
   }).catch(function(e){
-    document.getElementById('content').innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
+    document.getElementById('content').innerHTML=
+      '<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
   });
 }
 
-// ══════════════════════════════════════════════════
-// ── GRUPOS DE ENTREGABLES ──
-// Configura los nombres y tipos de grupos
-// Un grupo se asigna a cada entregable como campo adicional
-// ══════════════════════════════════════════════════
+// Helper: colored dot for status
+function statusDot(s){
+  var colors={pending:'#94a3b8',in_progress:'var(--brand)',for_review:'#f59e0b',approved:'#16a34a',issued:'#7c3aed',rejected:'#dc2626'};
+  var c=colors[s]||'#94a3b8';
+  return '<span title="'+(STATUS_CFG[s]||{label:s}).label+'" style="width:8px;height:8px;border-radius:50%;background:'+c+';display:inline-block;flex-shrink:0"></span>';
+}
 
-function openModelConfigModal(){
+// Helper: get phase color from project phases
+function getPhaseColor(phaseVal){
+  var ph=(APP.phases||[]).find(function(p){return p.name===phaseVal||p.field_value===phaseVal;});
+  if(ph&&ph.color)return ph.color;
+  // Fallback colors by common phase names
+  var defaults={'RIBA 2':'#3B6FE8','RIBA 3':'#06B6D4','RIBA 4':'#8B5CF6','riba2':'#3B6FE8','riba3':'#06B6D4','riba4':'#8B5CF6'};
+  return defaults[phaseVal]||'var(--brand)';
+}
+
+
+function openModelFedConfigModal(){
   var cfg=getModelConfig();
-  // Build field key options from codeSchemas + generalSchemas
-  var allKeys=[].concat(
-    codeSchemas().map(function(s){return {key:s.key,name:s.name+' (código)',vals:s.allowed_values};}),
-    generalSchemas().map(function(s){return {key:s.key,name:s.name+' (general)',vals:null};})
-  );
+  var allKeys=codeSchemas().concat(generalSchemas()).map(function(s){
+    return '<option value="'+s.key+'"'+(s.key===cfg.fieldKey?' selected':'')+'>'+s.name+' ('+s.key+')</option>';
+  }).join('');
 
   var overlay=document.createElement('div');
-  overlay.className='modal-overlay';overlay.id='model-cfg-modal';
+  overlay.className='modal-overlay';overlay.id='fed-cfg-modal';
   overlay.innerHTML=
-    '<div class="modal" style="max-width:520px">'+
+    '<div class="modal" style="max-width:500px">'+
     '<div class="modal-header">'+
-    '<div><div class="modal-title">⚙ Configurar identificador de Modelos</div>'+
-    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Define qué campo y valor identifica un entregable como Modelo BIM</div>'+
+    '<div><div class="modal-title">⚙ Configurar Estrategia de Federación</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">Define qué campo identifica los modelos BIM</div>'+
     '</div>'+
-    '<button class="btn btn-ghost btn-sm" id="mcfg-close">X</button></div>'+
+    '<button class="btn btn-ghost btn-sm" id="fc-close">✕</button></div>'+
     '<div class="modal-body">'+
     '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:var(--brand)">'+
-    '📋 Configuración actual: <strong>'+cfg.fieldKey+' = "'+cfg.fieldValue+'"</strong>'+
-    '</div>'+
+    'Configuración actual: <strong>'+cfg.fieldKey+' = "'+cfg.fieldValue+'"</strong></div>'+
     '<div class="form-grid">'+
-    '<div class="form-group"><label class="label">Campo identificador *</label>'+
-    '<select class="input" id="mcfg-key">'+
-    allKeys.map(function(f){
-      return '<option value="'+f.key+'"'+(f.key===cfg.fieldKey?' selected':'')+'>'+f.name+' ('+f.key+')</option>';
-    }).join('')+
-    // Also allow manual entry
-    '<option value="__custom"'+(allKeys.every(function(f){return f.key!==cfg.fieldKey;})?'':'')+'>Otro (escribir)</option>'+
-    '</select></div>'+
-    '<div class="form-group"><label class="label">Valor que identifica un modelo *</label>'+
-    '<input type="text" class="input" id="mcfg-val" value="'+cfg.fieldValue+'" placeholder="Ej: MOD, Modelo, BIM...">'+
+    '<div class="form-group"><label class="label">Campo identificador de modelos</label>'+
+    '<select class="input" id="fc-key"><option value="">—</option>'+allKeys+'</select></div>'+
+    '<div class="form-group"><label class="label">Valor del campo</label>'+
+    '<input type="text" class="input" id="fc-val" value="'+cfg.fieldValue+'" placeholder="Ej: MOD"></div>'+
     '</div>'+
+    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px;font-size:11px;color:var(--text2)">'+
+    '<div style="font-weight:700;margin-bottom:6px">Estructura de niveles:</div>'+
+    '<div style="display:flex;flex-direction:column;gap:4px">'+
+    '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--brand);color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">1</span>Federado General de Fase — <code>nivel_federacion = N1</code></div>'+
+    '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#10B981;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">2</span>Federado de Disciplina — <code>nivel_federacion = N2</code></div>'+
+    '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#F59E0B;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">3</span>Agrupa Paquetes — <code>nivel_federacion = N3</code></div>'+
+    '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#8B5CF6;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">4</span>Modelo de Sector — <code>nivel_federacion = N4</code></div>'+
     '</div>'+
-    // Preview: show values from the selected field
-    '<div style="margin-top:8px;padding:10px;background:var(--bg);border-radius:8px;font-size:11px;color:var(--text3)">'+
-    '💡 <strong>Ejemplos:</strong> '+
-    'Si tu campo es <em>tipo_documento</em> con valor <em>MOD</em> → todos los entregables con tipo MOD serán Modelos.<br>'+
-    'Si usas otro campo como <em>disciplina</em> con valor <em>BIM</em> → los de disciplina BIM serán Modelos.'+
+    '<div style="margin-top:8px;color:var(--text3);font-size:10px">Al registrar un modelo en Entregables, selecciona el nivel y el modelo padre correspondiente.</div>'+
     '</div>'+
     '</div>'+
     '<div class="modal-footer">'+
-    '<button class="btn" id="mcfg-cancel">Cancelar</button>'+
-    '<button class="btn btn-primary" id="mcfg-save">Guardar configuración</button>'+
+    '<button class="btn" id="fc-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="fc-save">Guardar</button>'+
     '</div></div>';
 
+  var existing=document.getElementById('fed-cfg-modal');
+  if(existing)existing.remove();
   document.getElementById('modal-container').appendChild(overlay);
-  document.getElementById('mcfg-close').onclick=function(){overlay.remove();};
-  document.getElementById('mcfg-cancel').onclick=function(){overlay.remove();};
-  document.getElementById('mcfg-save').onclick=function(){
-    var keyEl=document.getElementById('mcfg-key');
-    var valEl=document.getElementById('mcfg-val');
-    var key=keyEl.value.trim();
-    var val=valEl.value.trim();
+  overlay.querySelector('#fc-close').onclick=function(){overlay.remove();};
+  overlay.querySelector('#fc-cancel').onclick=function(){overlay.remove();};
+  overlay.querySelector('#fc-save').onclick=function(){
+    var key=overlay.querySelector('#fc-key').value;
+    var val=overlay.querySelector('#fc-val').value.trim();
     if(!key||!val){toast('Campo y valor son obligatorios.','error');return;}
     saveModelConfig(key,val);
-    toast('Configuración guardada. Recargando modelos...');
+    toast('Configuración guardada.');
     overlay.remove();
     renderModels();
   };
 }
+
+// Keep old openModelConfigModal as alias
+function openModelConfigModal(){openModelFedConfigModal();}
+
 
 // ══════════════════════════════════════════════════════════════
 // ── FASES DEL PROYECTO ──

@@ -167,6 +167,30 @@ textarea.input{resize:vertical;min-height:70px}
 .sidebar.collapsed .sb-group-children{max-height:0!important}
 .sidebar.collapsed .sb-section{display:none}
 
+
+/* ── Federation Strategy Cards ── */
+.fed-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:10px 12px;
+  cursor:pointer;
+  transition:all .15s;
+  position:relative;
+}
+.fed-card:hover{
+  border-color:var(--brand);
+  box-shadow:0 2px 8px rgba(0,0,0,.08);
+  transform:translateY(-1px);
+}
+.fed-card.fed-selected{
+  background:var(--brand-light);
+}
+.fed-n1.fed-selected{border-color:var(--brand);}
+.fed-n2.fed-selected{border-color:#10B981;background:#f0fdf4;}
+.fed-n3.fed-selected{border-color:#F59E0B;background:#fffbeb;}
+.fed-n4.fed-selected{border-color:#8B5CF6;background:#f5f3ff;}
+
 </style>
 </head>
 <body>
@@ -324,7 +348,7 @@ textarea.input{resize:vertical;min-height:70px}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="app.js?v=1776142352"></script>
+<script src="app.js?v=1776468707"></script>
 </body>
 </html>
 

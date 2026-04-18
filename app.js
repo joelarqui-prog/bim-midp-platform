@@ -5106,18 +5106,25 @@ function saveRespMatrix(){
 // ─────────────────────────────────────────────────────────────
 // MATRIZ LOIN
 // ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// ── MATRIZ LOIN — rediseñada según Anexo S1900.4 / Anexo N°05
+// Filas: sistemas, Columnas: hitos de field_schemas
+// Celda compacta: LOD + LOI (texto libre)
+// Celda expandida: detalle completo LOIN (modal)
+// ══════════════════════════════════════════════════════════════
+
 function renderLoinMatrix(){
   document.getElementById('topbar-actions').innerHTML=
-    isAdminLevel()?'<button class="btn btn-sm" onclick="saveLoinMatrix()">💾 Guardar</button>':'';
-  document.getElementById('content').innerHTML=loading();
+    (isAdminLevel()?'<button class="btn btn-sm" onclick="saveLoinMatrix()">💾 Guardar</button>':'')+
+    (isAdminLevel()?'<button class="btn btn-primary btn-sm" onclick="exportLoinMatrixPDF()">↓ PDF</button>':'');
 
-  var phases=getProjectPhases();
-  if(!phases.length){
+  var hitos=getPhaseGroups();  // hitos from field_schemas
+  if(!hitos.length){
     document.getElementById('content').innerHTML=
       '<div class="empty"><div class="empty-icon">🗓️</div>'+
-      '<div class="empty-title">Sin fases configuradas</div>'+
-      '<div class="empty-desc">Configura las fases del proyecto antes de construir la Matriz LOIN.</div>'+
-      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'phases\',document.getElementById(\'sb-phases\'))">→ Ir a Fases</button>':'')+
+      '<div class="empty-title">Sin hitos configurados</div>'+
+      '<div class="empty-desc">Configura los hitos del proyecto en <strong>Config. de campos</strong> antes de usar la Matriz LOIN.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'schemas\',document.getElementById(\'sb-schemas\'))">→ Ir a Config. de campos</button>':'')+
       '</div>';
     return;
   }
@@ -5125,88 +5132,482 @@ function renderLoinMatrix(){
     document.getElementById('content').innerHTML=
       '<div class="empty"><div class="empty-icon">📦</div>'+
       '<div class="empty-title">Sin sistemas registrados</div>'+
-      '<div class="empty-desc">Registra sistemas en el menú Sistemas.</div></div>';
+      '<div class="empty-desc">Registra sistemas en el menú <strong>Sistemas</strong> para construir la Matriz LOIN.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'systems\',document.getElementById(\'sb-systems\'))">→ Ir a Sistemas</button>':'')+
+      '</div>';
     return;
   }
 
   var saved=getLoinMatrixSaved();
-  var LOD_OPTS=['','100','200','300','350','400','500'];
-  var LOI_OPTS=['','1','2','3','4'];
+
+  // Get BIM Usos selected per hito
+  var bimusSaved=getBimUsosSaved();
+  var stdKey='peru_2023';
+  try{stdKey=localStorage.getItem('midp_bimusos_std_'+APP.project.id)||'peru_2023';}catch(e){}
+
+  function getUsosForHito(hitoKey){
+    var usoIds=[];
+    Object.keys(bimusSaved).forEach(function(k){
+      // key format: stdKey__usoId__phaseId
+      var parts=k.split('__');
+      if(parts.length===3&&parts[2]===hitoKey&&bimusSaved[k]){
+        // Extract uso number from id like 'U01' → '1'
+        var usoId=parts[1];
+        var std=BIM_STANDARDS[parts[0]]||BIM_STANDARDS['peru_2023'];
+        var uso=std&&std.usos.find(function(u){return u.id===usoId;});
+        if(uso){
+          // Get the item number
+          var num=std.usos.indexOf(uso)+1;
+          usoIds.push(num);
+        }
+      }
+    });
+    return usoIds.sort(function(a,b){return a-b;});
+  }
 
   // Group systems by discipline
   var byDisc={};
-  APP.systems.forEach(function(p){
-    var disc=p.discipline||'Sin disciplina';
+  APP.systems.forEach(function(s){
+    var disc=s.discipline||'Sin disciplina';
     if(!byDisc[disc])byDisc[disc]=[];
-    byDisc[disc].push(p);
+    byDisc[disc].push(s);
   });
 
-  // Phase headers — 2 sub-columns per phase: LOD and LOI
-  var phaseHeaders=phases.map(function(ph){
-    return '<th colspan="2" style="text-align:center;background:'+ph.color+'20;color:'+ph.color+';border-bottom:2px solid '+ph.color+';font-size:11px">'+
-      ph.name+(ph.sub_label?'<div style="font-size:9px;opacity:.8">'+ph.sub_label+'</div>':'')+
+  // ── Build header band (context row with Usos BIM per hito) ──
+  var hitoHeaderRow=hitos.map(function(h){
+    return '<th colspan="2" style="text-align:center;background:'+h.color+'22;color:'+h.color+
+      ';border-bottom:3px solid '+h.color+';font-size:11px;font-weight:700;padding:8px 6px;white-space:nowrap">'+
+      h.label+(h.sub?'<div style="font-size:9px;opacity:.75;font-weight:400">'+h.sub+'</div>':'')+
       '</th>';
   }).join('');
 
-  var phaseSubHeaders=phases.map(function(ph){
-    return '<th style="text-align:center;background:'+ph.color+'10;font-size:9px;color:var(--text3);min-width:56px">LOD</th>'+
-           '<th style="text-align:center;background:'+ph.color+'10;font-size:9px;color:var(--text3);min-width:56px">LOI</th>';
+  var usosRow=hitos.map(function(h){
+    var usos=getUsosForHito(h.key);
+    return '<th colspan="2" style="background:'+h.color+'10;padding:4px 6px;text-align:center;border-bottom:1px solid '+h.color+'30">'+
+      (usos.length?
+        '<div style="font-size:9px;color:var(--text3)">Usos BIM:</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:2px;justify-content:center;margin-top:2px">'+
+        usos.map(function(n){
+          return '<span style="font-size:9px;background:'+h.color+'25;color:'+h.color+
+            ';border-radius:4px;padding:1px 5px;font-weight:700">'+n+'</span>';
+        }).join('')+
+        '</div>':
+        '<span style="font-size:9px;color:var(--text3)">Sin usos asignados</span>')+
+      '</th>';
   }).join('');
 
+  var subHeaderRow=hitos.map(function(h){
+    return '<th style="text-align:center;background:'+h.color+'08;font-size:9px;color:var(--text3);'+
+      'min-width:70px;padding:4px 6px;border-right:none">LOD</th>'+
+      '<th style="text-align:center;background:'+h.color+'08;font-size:9px;color:var(--text3);'+
+      'min-width:70px;padding:4px 6px">LOI</th>';
+  }).join('');
+
+  // ── Build rows ──
   var rows='';
-  Object.entries(byDisc).forEach(function(entry){
-    var disc=entry[0]; var syss=entry[1];
-    rows+='<tr><td colspan="'+(2+phases.length*2)+'" style="background:var(--brand-light);padding:6px 12px;font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+disc+'</td></tr>';
-    syss.forEach(function(p){
-      rows+='<tr>'+
-        '<td><span class="code-chip" style="font-size:9px">'+p.code+'</span></td>'+
-        '<td style="font-size:11px;font-weight:600;color:var(--text);min-width:180px">'+p.name+'</td>'+
-        phases.map(function(ph){
-          var lodKey='lod__'+p.id+'__'+ph.id;
-          var loiKey='loi__'+p.id+'__'+ph.id;
-          var lodVal=saved[lodKey]||'';
-          var loiVal=saved[loiKey]||'';
-          return (isAdminLevel()?
-            '<td style="text-align:center;padding:4px">'+
-            '<select class="input" style="font-size:10px;padding:2px 4px;width:60px;text-align:center" data-loin-key="'+lodKey+'">'+
-            LOD_OPTS.map(function(v){return '<option value="'+v+'"'+(v===lodVal?' selected':'')+'>LOD'+v+'</option>';}).join('')+
-            '</select></td>'+
-            '<td style="text-align:center;padding:4px">'+
-            '<select class="input" style="font-size:10px;padding:2px 4px;width:56px;text-align:center" data-loin-key="'+loiKey+'">'+
-            LOI_OPTS.map(function(v){return '<option value="'+v+'"'+(v===loiVal?' selected':'')+'>LOI'+v+'</option>';}).join('')+
-            '</select></td>':
-            '<td style="text-align:center;font-size:11px;font-weight:700;color:var(--brand)">'+( lodVal?'LOD'+lodVal:'--')+'</td>'+
-            '<td style="text-align:center;font-size:11px;color:var(--text2)">'+( loiVal?'LOI'+loiVal:'--')+'</td>');
+  var discKeys=Object.keys(byDisc).sort();
+  discKeys.forEach(function(disc){
+    var systems=byDisc[disc];
+    // Discipline group header
+    rows+='<tr>'+
+      '<td colspan="'+(2+hitos.length*2)+'" style="background:var(--brand-light);'+
+      'padding:7px 14px;font-size:11px;font-weight:700;color:var(--brand);'+
+      'border-left:3px solid var(--brand)">'+disc+
+      '</td></tr>';
+
+    systems.forEach(function(sys){
+      rows+='<tr class="loin-row" data-sys-id="'+sys.id+'">'+
+        // Code + Name (sticky left columns)
+        '<td style="padding:6px 10px;white-space:nowrap">'+
+          '<span class="code-chip" style="font-size:9px">'+sys.code+'</span>'+
+        '</td>'+
+        '<td style="font-size:11px;font-weight:600;color:var(--text);min-width:180px;padding:6px 10px">'+
+          sys.name+
+          (sys.responsible?'<div style="font-size:9px;color:var(--text3)">'+sys.responsible+'</div>':'')+
+        '</td>'+
+        // One pair of LOD/LOI cells per hito
+        hitos.map(function(h){
+          var entryKey=sys.id+'__'+h.key;
+          var entry=saved[entryKey]||{};
+          var lodVal=entry.lod||'';
+          var loiVal=entry.loi||'';
+          var hasData=lodVal||loiVal;
+          if(isAdminLevel()){
+            return '<td style="padding:4px 6px;text-align:center;min-width:70px">'+
+              '<input type="text" class="input loin-lod-input" '+
+              'data-sys-id="'+sys.id+'" data-hito="'+h.key+'" data-field="lod" '+
+              'value="'+lodVal+'" placeholder="—" '+
+              'style="font-size:10px;padding:3px 6px;text-align:center;width:65px;'+
+              'border-color:'+(lodVal?h.color+'60':'var(--border)')+';'+
+              'font-weight:'+(lodVal?'700':'400')+'">'+
+              '</td>'+
+              '<td style="padding:4px 6px;text-align:center;min-width:70px">'+
+              '<input type="text" class="input loin-loi-input" '+
+              'data-sys-id="'+sys.id+'" data-hito="'+h.key+'" data-field="loi" '+
+              'value="'+loiVal+'" placeholder="—" '+
+              'style="font-size:10px;padding:3px 6px;text-align:center;width:65px;'+
+              'border-color:'+(loiVal?h.color+'60':'var(--border)')+';'+
+              'font-weight:'+(loiVal?'700':'400')+'">'+
+              '</td>';
+          }else{
+            return '<td style="text-align:center;padding:6px">'+
+              (lodVal?'<span style="font-size:10px;font-weight:700;color:'+h.color+';'+
+                'background:'+h.color+'18;border-radius:4px;padding:2px 7px">'+lodVal+'</span>':
+                '<span style="color:var(--text3);font-size:10px">—</span>')+
+              '</td>'+
+              '<td style="text-align:center;padding:6px">'+
+              (loiVal?'<span style="font-size:10px;font-weight:700;color:'+h.color+';'+
+                'background:'+h.color+'18;border-radius:4px;padding:2px 7px">'+loiVal+'</span>':
+                '<span style="color:var(--text3);font-size:10px">—</span>')+
+              '</td>';
+          }
         }).join('')+
-        '</tr>';
+        // Detail button
+        '<td style="padding:4px 6px;text-align:center">'+
+          '<button class="btn btn-ghost btn-sm loin-detail-btn" '+
+          'data-sys-id="'+sys.id+'" data-sys-name="'+sys.name.replace(/"/g,'&quot;')+'" '+
+          'title="Ver / editar detalle LOIN completo" '+
+          'style="font-size:10px;padding:3px 8px;color:var(--brand)">'+
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+
+          '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>'+
+          '<line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+          ' Detalle</button>'+
+        '</td>'+
+      '</tr>';
     });
   });
 
+  // ── Render table ──
   document.getElementById('content').innerHTML=
-    '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--brand)">'+
-    'Define el <strong>Level of Detail (LOD)</strong> y <strong>Level of Information (LOI)</strong> para cada sistema por fase de proyecto'+
+    // Info banner
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;'+
+    'background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:var(--brand)">'+
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+
+    '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'+
+    'Columnas = Hitos configurados · LOD y LOI de <strong>texto libre</strong> · '+
+    'Clic en <strong>Detalle</strong> para información LOIN completa por celda'+
+    (isAdminLevel()?'<button class="btn btn-sm" style="margin-left:auto" onclick="saveLoinMatrix()">💾 Guardar cambios</button>':'')+
     '</div>'+
+    // Table
     '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
-    '<table class="midp-tbl" style="border-collapse:collapse">'+
+    '<table class="midp-tbl" style="border-collapse:collapse;width:100%">'+
     '<thead>'+
-    '<tr><th rowspan="2">Código</th><th rowspan="2" style="min-width:180px">Sistema</th>'+phaseHeaders+'</tr>'+
-    '<tr>'+phaseSubHeaders+'</tr>'+
-    '</thead><tbody>'+rows+'</tbody></table></div>';
+    '<tr>'+
+      '<th rowspan="3" style="min-width:80px">Código</th>'+
+      '<th rowspan="3" style="min-width:180px">Sistema</th>'+
+      hitoHeaderRow+
+      '<th rowspan="3" style="min-width:70px;text-align:center">Detalle</th>'+
+    '</tr>'+
+    '<tr>'+usosRow+'</tr>'+
+    '<tr>'+subHeaderRow+'</tr>'+
+    '</thead>'+
+    '<tbody>'+rows+'</tbody>'+
+    '</table></div>';
+
+  // ── Event listeners ──
+  // LOD/LOI inputs: live color feedback
+  document.querySelectorAll('.loin-lod-input,.loin-loi-input').forEach(function(inp){
+    var hitoKey=inp.dataset.hito;
+    var hito=hitos.find(function(h){return h.key===hitoKey;});
+    var color=hito?hito.color:'var(--brand)';
+    inp.addEventListener('input',function(){
+      inp.style.borderColor=inp.value?color+'80':'var(--border)';
+      inp.style.fontWeight=inp.value?'700':'400';
+    });
+    inp.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();saveLoinMatrix();toast('Guardado.');}
+    });
+  });
+
+  // Detail buttons
+  document.querySelectorAll('.loin-detail-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      openLoinDetailModal(btn.dataset.sysId,btn.dataset.sysName,hitos,saved);
+    });
+  });
+}
+
+// ── LOIN Detail Modal — full LOIN per system × hito ──
+function openLoinDetailModal(sysId,sysName,hitos,saved){
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='loin-detail-modal';
+
+  var sys=APP.systems.find(function(s){return s.id===sysId;})||{code:'',name:sysName};
+
+  // Build tabs — one per hito
+  var tabHeaders=hitos.map(function(h,i){
+    return '<button class="loin-tab-btn'+(i===0?' active':'')+'" data-hito="'+h.key+'" '+
+      'style="padding:8px 14px;border:none;background:'+(i===0?h.color+'22':'transparent')+';'+
+      'color:'+(i===0?h.color:'var(--text3)')+';font-size:11px;font-weight:'+(i===0?'700':'500')+';'+
+      'cursor:pointer;border-bottom:2px solid '+(i===0?h.color:'transparent')+';transition:all .15s">'+
+      h.label+
+      '</button>';
+  }).join('');
+
+  function buildHitoPanel(h){
+    var entryKey=sysId+'__'+h.key;
+    var d=saved[entryKey]||{};
+    var ro=!isAdminLevel();
+    function fi(id,label,val,placeholder,fullWidth){
+      return '<div class="form-group'+(fullWidth?' full':'')+'" style="margin-bottom:10px">'+
+        '<label class="label" style="font-size:10px">'+label+'</label>'+
+        (ro?
+          '<div style="font-size:12px;color:var(--text);padding:6px 0;border-bottom:1px solid var(--border2)">'+
+          (val||'<span style="color:var(--text3)">—</span>')+'</div>':
+          '<input type="text" class="input loin-field" data-key="'+id+'" value="'+(val||'')+'" '+
+          'placeholder="'+(placeholder||'')+'" style="font-size:11px">');
+    }
+    function ta(id,label,val,placeholder){
+      return '<div class="form-group full" style="margin-bottom:10px">'+
+        '<label class="label" style="font-size:10px">'+label+'</label>'+
+        (ro?
+          '<div style="font-size:12px;color:var(--text);padding:6px 0;border-bottom:1px solid var(--border2);white-space:pre-wrap">'+
+          (val||'<span style="color:var(--text3)">—</span>')+'</div>':
+          '<textarea class="input loin-field" data-key="'+id+'" rows="2" '+
+          'placeholder="'+(placeholder||'')+'" style="font-size:11px">'+(val||'')+'</textarea>');
+    }
+
+    return '<div class="loin-panel" data-hito="'+h.key+'" style="display:none">'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">'+
+
+      // ── Bloque LOD ──
+      '<div style="border:1px solid '+h.color+'40;border-radius:8px;padding:14px;background:'+h.color+'06">'+
+      '<div style="font-size:10px;font-weight:700;color:'+h.color+';text-transform:uppercase;'+
+      'letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:6px">'+
+      '<span style="background:'+h.color+';color:white;border-radius:4px;padding:1px 7px;font-size:10px">LOD</span>'+
+      'Nivel de Detalle Geométrico</div>'+
+      '<div class="form-grid">'+
+      fi('lod','Nivel LOD',d.lod,'Ej: LOD 2, LOD 300...')+
+      fi('lod_dim','Dimensionalidad',d.lod_dim,'1D / 2D / 3D')+
+      fi('lod_ubic_tipo','Ubicación — Tipo',d.lod_ubic_tipo,'Absoluta / Relativa')+
+      fi('lod_ubic_coord','Ubicación — Coordenadas',d.lod_ubic_coord,'UTM WGS-84...')+
+      fi('lod_param','Comportamiento paramétrico',d.lod_param,'Paramétrico / Parcialmente...')+
+      fi('lod_apariencia','Apariencia',d.lod_apariencia,'Color, Textura...')+
+      '</div>'+
+      ta('lod_desc','Descripción del nivel LOD',d.lod_desc,'Descripción geométrica detallada del elemento en este hito...')+
+      '</div>'+
+
+      // ── Bloque LOI ──
+      '<div style="border:1px solid #10B98140;border-radius:8px;padding:14px;background:#10B98106">'+
+      '<div style="font-size:10px;font-weight:700;color:#10B981;text-transform:uppercase;'+
+      'letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:6px">'+
+      '<span style="background:#10B981;color:white;border-radius:4px;padding:1px 7px;font-size:10px">LOI</span>'+
+      'Nivel de Información Alfanumérica</div>'+
+      '<div class="form-grid">'+
+      fi('loi','Nivel LOI',d.loi,'Ej: LOI 2, LOI 3...')+
+      fi('loi_elemento','Elemento',d.loi_elemento,'Tipo de elemento')+
+      fi('loi_nombre','Nombre del elemento',d.loi_nombre,'Ej: Escalera ##')+
+      fi('loi_codigo','Código de elemento',d.loi_codigo,'')+
+      fi('loi_rne_cod','Código partida RNE',d.loi_rne_cod,'Ej: OE.2.3.10')+
+      fi('loi_rne_desc','Descripción partida RNE',d.loi_rne_desc,'')+
+      fi('loi_clasif_sistema','Sistema de clasificación',d.loi_clasif_sistema,'Uniclass 2015, OmniClass...')+
+      fi('loi_clasif_cod','Código de clasificación',d.loi_clasif_cod,'')+
+      fi('loi_clasif_desc','Descripción de clasificación',d.loi_clasif_desc,'')+
+      fi('loi_nivel','Nivel de elemento',d.loi_nivel,'Sótano ##, Piso ##...')+
+      fi('loi_categoria','Categoría',d.loi_categoria,'Interior, Exterior')+
+      fi('loi_estado_fase','Estado de fase',d.loi_estado_fase,'Nueva Construcción...')+
+      fi('loi_sistema','Sistema',d.loi_sistema,'')+
+      fi('loi_subsistema','Subsistema',d.loi_subsistema,'')+
+      '</div>'+
+      ta('loi_param_const','Parámetros para construcción',d.loi_param_const,'Frente, Sector, Fecha de ejecución...')+
+      ta('loi_param_om','Parámetros para O&M',d.loi_param_om,'COBie...')+
+      ta('loi_otros','Otros',d.loi_otros,'')+
+      '</div>'+
+
+      '</div>'+  // end 2-column grid
+
+      // ── Documentación asociada ──
+      '<div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;'+
+      'letter-spacing:.06em;margin-bottom:10px">📄 Documentación asociada</div>'+
+      ta('doc_tipo','Tipo de documentación asociada',d.doc_tipo,'Especificaciones técnicas, ensayos, planos...')+
+      '</div>'+
+      '</div>';  // end panel
+  }
+
+  var panels=hitos.map(function(h){return buildHitoPanel(h);}).join('');
+
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:900px;max-height:92vh;display:flex;flex-direction:column">'+
+    '<div class="modal-header">'+
+    '<div>'+
+    '<div class="modal-title">Detalle LOIN — '+sys.code+' '+sysName+'</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+
+    'Nivel de Información Necesaria (LOIN) por hito</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="loin-modal-close">✕</button>'+
+    '</div>'+
+    // Tabs
+    '<div style="display:flex;gap:0;border-bottom:1px solid var(--border);padding:0 16px;background:var(--bg);flex-shrink:0">'+
+    tabHeaders+
+    '</div>'+
+    // Content
+    '<div class="modal-body" style="overflow-y:auto;flex:1">'+
+    panels+
+    '</div>'+
+    '<div class="modal-footer" id="loin-modal-footer">'+
+    (isAdminLevel()?'<button class="btn" id="loin-modal-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="loin-modal-save">Guardar detalle</button>':''+
+    '<button class="btn btn-primary" id="loin-modal-cancel">Cerrar</button>')+
+    '</div></div>';
+
+  var existing=document.getElementById('loin-detail-modal');
+  if(existing)existing.remove();
+  document.getElementById('modal-container').appendChild(overlay);
+
+  // Show first panel
+  var firstPanel=overlay.querySelector('.loin-panel');
+  if(firstPanel)firstPanel.style.display='block';
+
+  // Tab switching
+  overlay.querySelectorAll('.loin-tab-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var hitoKey=btn.dataset.hito;
+      var hito=hitos.find(function(h){return h.key===hitoKey;})||{color:'var(--brand)'};
+      // Update tab styles
+      overlay.querySelectorAll('.loin-tab-btn').forEach(function(b){
+        var bHito=hitos.find(function(h){return h.key===b.dataset.hito;})||{color:'var(--brand)'};
+        b.style.background='transparent';
+        b.style.color='var(--text3)';
+        b.style.fontWeight='500';
+        b.style.borderBottomColor='transparent';
+      });
+      btn.style.background=hito.color+'22';
+      btn.style.color=hito.color;
+      btn.style.fontWeight='700';
+      btn.style.borderBottomColor=hito.color;
+      // Show/hide panels
+      overlay.querySelectorAll('.loin-panel').forEach(function(p){
+        p.style.display=p.dataset.hito===hitoKey?'block':'none';
+      });
+    });
+  });
+
+  overlay.querySelector('#loin-modal-close').onclick=function(){overlay.remove();};
+  var cancelBtn=overlay.querySelector('#loin-modal-cancel');
+  if(cancelBtn)cancelBtn.onclick=function(){overlay.remove();};
+
+  var saveBtn=overlay.querySelector('#loin-modal-save');
+  if(saveBtn){
+    saveBtn.onclick=function(){
+      var allSaved=getLoinMatrixSaved();
+      // Read ALL visible and hidden panels
+      overlay.querySelectorAll('.loin-panel').forEach(function(panel){
+        var hitoKey=panel.dataset.hito;
+        var entryKey=sysId+'__'+hitoKey;
+        var entry=allSaved[entryKey]||{};
+        panel.querySelectorAll('.loin-field').forEach(function(field){
+          entry[field.dataset.key]=field.value||null;
+        });
+        // Also sync compact LOD/LOI from main table inputs if present
+        allSaved[entryKey]=entry;
+      });
+      // Persist
+      var pid=APP.project&&APP.project.id;
+      try{localStorage.setItem('midp_loinmatrix_'+pid,JSON.stringify(allSaved));}catch(e){}
+      toast('Detalle LOIN guardado — '+sys.code);
+      overlay.remove();
+      // Refresh main table
+      renderLoinMatrix();
+    };
+  }
 }
 
 function getLoinMatrixSaved(){
   var pid=APP.project&&APP.project.id;
-  if(!pid)return {};
-  try{return JSON.parse(localStorage.getItem('midp_loinmatrix_'+pid)||'{}');}catch(e){return {};}
+  if(!pid)return{};
+  try{return JSON.parse(localStorage.getItem('midp_loinmatrix_'+pid)||'{}');}catch(e){return{};}
 }
 
 function saveLoinMatrix(){
   var pid=APP.project&&APP.project.id;
   if(!pid)return;
-  var data={};
-  document.querySelectorAll('[data-loin-key]').forEach(function(el){
-    if(el.value)data[el.dataset.loinKey]=el.value;
+  var allSaved=getLoinMatrixSaved();
+  // Read compact LOD/LOI inputs from main table
+  document.querySelectorAll('.loin-lod-input,.loin-loi-input').forEach(function(inp){
+    var sysId=inp.dataset.sysId;
+    var hitoKey=inp.dataset.hito;
+    var field=inp.dataset.field;
+    var entryKey=sysId+'__'+hitoKey;
+    if(!allSaved[entryKey])allSaved[entryKey]={};
+    allSaved[entryKey][field]=inp.value||null;
   });
-  try{localStorage.setItem('midp_loinmatrix_'+pid,JSON.stringify(data));}catch(e){}
+  try{localStorage.setItem('midp_loinmatrix_'+pid,JSON.stringify(allSaved));}catch(e){}
   toast('Matriz LOIN guardada.');
+  // Refresh to apply colors
+  renderLoinMatrix();
 }
+
+function exportLoinMatrixPDF(){
+  // Simple print view of the compact matrix
+  if(!APP.project)return;
+  var hitos=getPhaseGroups();
+  var saved=getLoinMatrixSaved();
+  var now=new Date();
+  var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+
+  var byDisc={};
+  APP.systems.forEach(function(s){
+    var d=s.discipline||'Sin disciplina';
+    if(!byDisc[d])byDisc[d]=[];
+    byDisc[d].push(s);
+  });
+
+  var hitoTh=hitos.map(function(h){
+    return '<th colspan="2" style="background:'+h.color+'22;color:'+h.color+
+      ';border-bottom:2px solid '+h.color+';text-align:center;padding:6px;font-size:10px">'+
+      h.label+'</th>';
+  }).join('');
+  var subTh=hitos.map(function(h){
+    return '<th style="text-align:center;font-size:9px;color:#64748b;padding:4px;background:'+h.color+'10">LOD</th>'+
+           '<th style="text-align:center;font-size:9px;color:#64748b;padding:4px;background:'+h.color+'10">LOI</th>';
+  }).join('');
+
+  var rows='';
+  Object.keys(byDisc).sort().forEach(function(disc){
+    rows+='<tr><td colspan="'+(2+hitos.length*2)+'" style="background:#eff6ff;padding:6px 12px;'+
+      'font-weight:700;font-size:10px;color:#1d4ed8;border-left:3px solid #3b82f6">'+disc+'</td></tr>';
+    byDisc[disc].forEach(function(s){
+      rows+='<tr>'+
+        '<td style="padding:5px 8px;font-family:monospace;font-size:9px;color:#1B3A6B">'+s.code+'</td>'+
+        '<td style="padding:5px 8px;font-size:10px;font-weight:600">'+s.name+'</td>'+
+        hitos.map(function(h){
+          var entry=saved[s.id+'__'+h.key]||{};
+          return '<td style="text-align:center;padding:5px;font-size:10px;font-weight:700;color:'+h.color+'">'+
+            (entry.lod||'—')+'</td>'+
+            '<td style="text-align:center;padding:5px;font-size:10px;color:'+h.color+'">'+
+            (entry.loi||'—')+'</td>';
+        }).join('')+
+        '</tr>';
+    });
+  });
+
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+    '<title>Matriz LOIN — '+APP.project.name+'</title>'+
+    '<style>body{font-family:Arial,sans-serif;margin:0;padding:16px;font-size:11px;color:#1e293b}'+
+    'h1{color:#1B3A6B;font-size:16px;margin:0 0 4px}'+
+    '.header{display:flex;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
+    'table{width:100%;border-collapse:collapse}'+
+    'th{background:#1B3A6B;color:#fff;padding:6px 8px;font-size:9px;font-weight:600}'+
+    'td{border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
+    'tr:nth-child(even) td{background:#f8fafc}'+
+    '@media print{body{padding:8px}@page{size:A3 landscape;margin:10mm}}</style></head><body>'+
+    '<div class="header"><div>'+
+    '<h1>Matriz LOIN</h1>'+
+    '<div style="color:#2E86C1;font-weight:600">'+APP.project.name+(APP.project.code?' · '+APP.project.code:'')+'</div>'+
+    '</div><div style="text-align:right;font-size:10px;color:#64748b">'+dateStr+'<br>'+
+    APP.systems.length+' sistemas · '+hitos.length+' hitos</div></div>'+
+    '<table><thead><tr><th rowspan="2">Código</th><th rowspan="2">Sistema</th>'+hitoTh+'</tr>'+
+    '<tr>'+subTh+'</tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div style="font-size:8px;color:#94a3b8;margin-top:12px;text-align:center;border-top:1px solid #e2e8f0;padding-top:8px">'+
+    'Unify Management · Matriz LOIN · '+APP.project.name+' · '+dateStr+'</div>'+
+    '</body></html>';
+
+  var win=window.open('','_blank','width=1100,height=750');
+  if(!win){toast('Permite ventanas emergentes para exportar.','error');return;}
+  win.document.write(html);win.document.close();
+  win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
+  toast('PDF listo — usa Guardar como PDF en el diálogo.');
+}
+
+

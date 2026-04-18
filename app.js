@@ -4625,46 +4625,177 @@ function openTeamMemberModal(){
 // ─────────────────────────────────────────────────────────────
 // USOS BIM — Guía Nacional BIM Perú 2023
 // ─────────────────────────────────────────────────────────────
-var BIM_USOS=[
-  {id:'U01',cat:'Planificación',name:'Levantamiento de condiciones existentes'},
-  {id:'U02',cat:'Planificación',name:'Estimación de costos'},
-  {id:'U03',cat:'Planificación',name:'Planificación de fases del proyecto'},
-  {id:'U04',cat:'Diseño',name:'Revisión del programa (brief)'},
-  {id:'U05',cat:'Diseño',name:'Análisis del lugar'},
-  {id:'U06',cat:'Diseño',name:'Revisión del diseño'},
-  {id:'U07',cat:'Diseño',name:'Análisis de ingeniería estructural'},
-  {id:'U08',cat:'Diseño',name:'Análisis de sistemas MEP'},
-  {id:'U09',cat:'Diseño',name:'Análisis de eficiencia energética'},
-  {id:'U10',cat:'Diseño',name:'Análisis lumínico'},
-  {id:'U11',cat:'Diseño',name:'Análisis acústico'},
-  {id:'U12',cat:'Diseño',name:'Análisis hidráulico y de drenaje'},
-  {id:'U13',cat:'Diseño',name:'Coordinación 3D / Detección de interferencias (Clash Detection)'},
-  {id:'U14',cat:'Diseño',name:'Planificación para construcción / Constructibilidad'},
-  {id:'U15',cat:'Construcción',name:'Elaboración de presupuesto detallado'},
-  {id:'U16',cat:'Construcción',name:'Diseño del sistema de construcción (métodos constructivos)'},
-  {id:'U17',cat:'Construcción',name:'Planificación 4D (Gestión de cronograma)'},
-  {id:'U18',cat:'Construcción',name:'Seguimiento del proceso constructivo'},
-  {id:'U19',cat:'Construcción',name:'Control y calidad de la construcción'},
-  {id:'U20',cat:'Construcción',name:'Gestión de materiales y logística'},
-  {id:'U21',cat:'Construcción',name:'Modelado As-Built (As-Constructed)'},
-  {id:'U22',cat:'Operación',name:'Planificación del mantenimiento'},
-  {id:'U23',cat:'Operación',name:'Gestión de activos (Asset Management)'},
-  {id:'U24',cat:'Operación',name:'Gestión del espacio y mobiliario'},
-  {id:'U25',cat:'Operación',name:'Análisis de sistemas constructivos'},
-  {id:'U26',cat:'Operación',name:'Gestión de emergencias y desastres'},
-  {id:'U27',cat:'Operación',name:'Gestión de residuos y demolición'}
-];
+// ══════════════════════════════════════════════════════════════
+// ── USOS BIM — Múltiples estándares y guías internacionales
+// ══════════════════════════════════════════════════════════════
+
+var BIM_STANDARDS = {
+
+  // ── Guía Nacional BIM Perú 2023 ──
+  'peru_2023': {
+    label: 'Guía Nacional BIM — Perú 2023',
+    flag: '🇵🇪',
+    categories: ['Planificación','Diseño','Construcción','Operación'],
+    usos: [
+      {id:'U01',cat:'Planificación',name:'Levantamiento de condiciones existentes'},
+      {id:'U02',cat:'Planificación',name:'Análisis del entorno físico'},
+      {id:'U03',cat:'Planificación',name:'Diseño de especialidades'},
+      {id:'U04',cat:'Planificación',name:'Elaboración de documentación'},
+      {id:'U05',cat:'Planificación',name:'Visualización 3D'},
+      {id:'U06',cat:'Planificación',name:'Coordinación de la información'},
+      {id:'U07',cat:'Diseño',name:'Análisis del programa arquitectónico'},
+      {id:'U08',cat:'Diseño',name:'Estimación de cantidades y costos'},
+      {id:'U09',cat:'Diseño',name:'Revisión del diseño'},
+      {id:'U10',cat:'Diseño',name:'Análisis Estructural'},
+      {id:'U11',cat:'Diseño',name:'Análisis Lumínico'},
+      {id:'U12',cat:'Diseño',name:'Análisis Energético de las instalaciones'},
+      {id:'U13',cat:'Diseño',name:'Análisis de la capacidad constructiva'},
+      {id:'U14',cat:'Diseño',name:'Análisis de otras ingenierías y especialidades'},
+      {id:'U15',cat:'Diseño',name:'Evaluación de Sostenibilidad'},
+      {id:'U16',cat:'Construcción',name:'Detección de interferencias e incompatibilidades'},
+      {id:'U17',cat:'Construcción',name:'Planificación de la fase de ejecución'},
+      {id:'U18',cat:'Construcción',name:'Diseño de sistemas constructivos para ejecución'},
+      {id:'U19',cat:'Construcción',name:'Fabricación digital'},
+      {id:'U20',cat:'Construcción',name:'Planificación de obras preliminares y provisionales'},
+      {id:'U21',cat:'Construcción',name:'Planificación de la logística de la construcción'},
+      {id:'U22',cat:'Construcción',name:'Registrar información de lo construido (As-built)'},
+      {id:'U23',cat:'Operación',name:'Gestión de activos'},
+      {id:'U24',cat:'Operación',name:'Programación del mantenimiento preventivo'},
+      {id:'U25',cat:'Operación',name:'Análisis de los sistemas del activo'},
+      {id:'U26',cat:'Operación',name:'Gestión y seguimiento del espacio del activo'},
+      {id:'U27',cat:'Operación',name:'Planificación y gestión de emergencias'}
+    ]
+  },
+
+  // ── USES (Penn State / BIM Project Execution Planning Guide) ──
+  'penn_state': {
+    label: 'BIM Uses — Penn State BIM Execution Planning',
+    flag: '🇺🇸',
+    categories: ['Planning','Design','Construction','Operations'],
+    usos: [
+      {id:'PS01',cat:'Planning',name:'Existing Conditions Modeling'},
+      {id:'PS02',cat:'Planning',name:'Cost Estimation'},
+      {id:'PS03',cat:'Planning',name:'Phase Planning (4D Modeling)'},
+      {id:'PS04',cat:'Planning',name:'Programming'},
+      {id:'PS05',cat:'Planning',name:'Site Analysis'},
+      {id:'PS06',cat:'Design',name:'Design Authoring'},
+      {id:'PS07',cat:'Design',name:'Design Reviews'},
+      {id:'PS08',cat:'Design',name:'Structural Analysis'},
+      {id:'PS09',cat:'Design',name:'Lighting Analysis'},
+      {id:'PS10',cat:'Design',name:'Mechanical Analysis'},
+      {id:'PS11',cat:'Design',name:'Other Engineering Analysis'},
+      {id:'PS12',cat:'Design',name:'Sustainability (LEED) Evaluation'},
+      {id:'PS13',cat:'Design',name:'Code Validation'},
+      {id:'PS14',cat:'Construction',name:'3D Coordination (Clash Detection)'},
+      {id:'PS15',cat:'Construction',name:'Site Utilization Planning'},
+      {id:'PS16',cat:'Construction',name:'Construction System Design'},
+      {id:'PS17',cat:'Construction',name:'Digital Fabrication'},
+      {id:'PS18',cat:'Construction',name:'3D Control and Planning'},
+      {id:'PS19',cat:'Construction',name:'Record Modeling (As-Built)'},
+      {id:'PS20',cat:'Operations',name:'Maintenance Scheduling'},
+      {id:'PS21',cat:'Operations',name:'Building System Analysis'},
+      {id:'PS22',cat:'Operations',name:'Asset Management'},
+      {id:'PS23',cat:'Operations',name:'Space Management / Tracking'},
+      {id:'PS24',cat:'Operations',name:'Disaster Planning'}
+    ]
+  },
+
+  // ── UK BIM Framework — ISO 19650 Uses ──
+  'uk_bim': {
+    label: 'UK BIM Framework — ISO 19650',
+    flag: '🇬🇧',
+    categories: ['Brief','Design','Construction','Handover & Close-out','Operation'],
+    usos: [
+      {id:'UK01',cat:'Brief',name:'Existing Conditions Survey'},
+      {id:'UK02',cat:'Brief',name:'Constraints & Opportunities Analysis'},
+      {id:'UK03',cat:'Brief',name:'Strategic Brief Validation'},
+      {id:'UK04',cat:'Design',name:'Concept Design Authoring'},
+      {id:'UK05',cat:'Design',name:'Structural Analysis & Design'},
+      {id:'UK06',cat:'Design',name:'MEP / Building Services Design'},
+      {id:'UK07',cat:'Design',name:'Energy & Sustainability Analysis'},
+      {id:'UK08',cat:'Design',name:'Technical Design Coordination'},
+      {id:'UK09',cat:'Design',name:'Clash Detection & Resolution'},
+      {id:'UK10',cat:'Design',name:'Regulatory Compliance Checking'},
+      {id:'UK11',cat:'Design',name:'Cost Planning & Estimation'},
+      {id:'UK12',cat:'Construction',name:'Construction Sequencing (4D)'},
+      {id:'UK13',cat:'Construction',name:'Site Logistics Planning'},
+      {id:'UK14',cat:'Construction',name:'Temporary Works Design'},
+      {id:'UK15',cat:'Construction',name:'Offsite / Prefabrication'},
+      {id:'UK16',cat:'Construction',name:'Quality & Progress Monitoring'},
+      {id:'UK17',cat:'Handover & Close-out',name:'As-Constructed Information'},
+      {id:'UK18',cat:'Handover & Close-out',name:'O&M Manual Production'},
+      {id:'UK19',cat:'Handover & Close-out',name:'Asset Information Model (AIM) Population'},
+      {id:'UK20',cat:'Operation',name:'Facilities Management (FM) Integration'},
+      {id:'UK21',cat:'Operation',name:'Space & Occupancy Management'},
+      {id:'UK22',cat:'Operation',name:'Asset Lifecycle Management'},
+      {id:'UK23',cat:'Operation',name:'Emergency & Safety Planning'}
+    ]
+  },
+
+  // ── buildingSMART International — IFC/BIM Use Cases ──
+  'bsi': {
+    label: 'buildingSMART International — BIM Use Cases',
+    flag: '🌐',
+    categories: ['Planning & Programming','Design','Construction','O&M'],
+    usos: [
+      {id:'BS01',cat:'Planning & Programming',name:'Geospatial & Site Analysis'},
+      {id:'BS02',cat:'Planning & Programming',name:'Program Validation (BIM-based Briefing)'},
+      {id:'BS03',cat:'Planning & Programming',name:'Early Cost Estimation'},
+      {id:'BS04',cat:'Planning & Programming',name:'Urban Planning Integration'},
+      {id:'BS05',cat:'Design',name:'Architectural Design Authoring'},
+      {id:'BS06',cat:'Design',name:'Structural Engineering (BIM-based)'},
+      {id:'BS07',cat:'Design',name:'MEP / Systems Engineering'},
+      {id:'BS08',cat:'Design',name:'IFC-based Interoperability'},
+      {id:'BS09',cat:'Design',name:'Model-based Quantity Takeoff'},
+      {id:'BS10',cat:'Design',name:'Simulation & Analysis (Energy, Acoustic, Lighting)'},
+      {id:'BS11',cat:'Design',name:'Accessibility & Regulatory Checking'},
+      {id:'BS12',cat:'Construction',name:'4D Scheduling & Sequencing'},
+      {id:'BS13',cat:'Construction',name:'5D Cost Control (BIM-based)'},
+      {id:'BS14',cat:'Construction',name:'Prefabrication & Modular Construction'},
+      {id:'BS15',cat:'Construction',name:'Field Data Capture & Verification'},
+      {id:'BS16',cat:'Construction',name:'Safety Planning (6D)'},
+      {id:'BS17',cat:'O&M',name:'COBie / FM Data Exchange'},
+      {id:'BS18',cat:'O&M',name:'Asset Register & Lifecycle Management'},
+      {id:'BS19',cat:'O&M',name:'Building Performance Monitoring'},
+      {id:'BS20',cat:'O&M',name:'Deconstruction & Waste Management'}
+    ]
+  }
+};
+
+// Default standard
+var BIM_USOS = BIM_STANDARDS['peru_2023'].usos;
 
 var CAT_COLORS={
+  // Perú 2023
   'Planificación':'#3B6FE8',
   'Diseño':'#10B981',
   'Construcción':'#F59E0B',
-  'Operación':'#8B5CF6'
+  'Operación':'#8B5CF6',
+  // Penn State
+  'Planning':'#3B6FE8',
+  'Design':'#10B981',
+  'Construction':'#F59E0B',
+  'Operations':'#8B5CF6',
+  // UK BIM
+  'Brief':'#06B6D4',
+  'Handover & Close-out':'#EF4444',
+  'Operation':'#8B5CF6',
+  // buildingSMART
+  'Planning & Programming':'#3B6FE8',
+  'O&M':'#8B5CF6'
 };
 
 function renderBimUsos(){
+  // Restore selected standard from localStorage
+  var pid=APP.project&&APP.project.id;
+  var savedStd='peru_2023';
+  try{savedStd=localStorage.getItem('midp_bimusos_std_'+pid)||'peru_2023';}catch(e){}
+
   document.getElementById('topbar-actions').innerHTML=
-    isAdminLevel()?'<button class="btn btn-sm" onclick="saveBimUsos()">💾 Guardar</button>':'';
+    '<button class="btn btn-sm btn-primary" id="btn-std-selector" onclick="openBimStandardSelector()">'+
+    '📋 Guías y Estándares</button>'+
+    (isAdminLevel()?'<button class="btn btn-sm" onclick="saveBimUsos()">💾 Guardar</button>':'');
+
   document.getElementById('content').innerHTML=loading();
 
   var phases=getProjectPhases();
@@ -4678,37 +4809,55 @@ function renderBimUsos(){
     return;
   }
 
-  // Load saved selections from localStorage
+  renderBimUsosTable(savedStd);
+}
+
+function renderBimUsosTable(stdKey){
+  var pid=APP.project&&APP.project.id;
+  var std=BIM_STANDARDS[stdKey]||BIM_STANDARDS['peru_2023'];
+  var usos=std.usos;
+  var cats=std.categories;
+  var phases=getProjectPhases();
   var saved=getBimUsosSaved();
+  var saved_std=stdKey;
 
-  // Group usos by category
-  var cats=['Planificación','Diseño','Construcción','Operación'];
-
+  // Phase headers
   var phaseHeaders=phases.map(function(ph){
-    return '<th style="text-align:center;min-width:90px;background:'+ph.color+'20;color:'+ph.color+';border-bottom:2px solid '+ph.color+'">'+
-      ph.name+(ph.sub_label?'<div style="font-size:9px;font-weight:400;opacity:.8">'+ph.sub_label+'</div>':'')+
+    return '<th style="text-align:center;min-width:90px;background:'+ph.color+'20;color:'+ph.color+
+      ';border-bottom:2px solid '+ph.color+'">'+ph.name+
+      (ph.sub_label?'<div style="font-size:9px;font-weight:400;opacity:.8">'+ph.sub_label+'</div>':'')+
       '</th>';
   }).join('');
 
   var rows='';
   cats.forEach(function(cat){
-    var usos=BIM_USOS.filter(function(u){return u.cat===cat;});
+    var catUsos=usos.filter(function(u){return u.cat===cat;});
+    if(!catUsos.length)return;
     var catColor=CAT_COLORS[cat]||'var(--brand)';
-    // Category header row
-    rows+='<tr><td colspan="'+(3+phases.length)+'" style="background:'+catColor+'15;padding:6px 12px;font-size:11px;font-weight:700;color:'+catColor+';border-left:3px solid '+catColor+'">'+cat.toUpperCase()+'</td></tr>';
-    usos.forEach(function(uso){
+    rows+='<tr><td colspan="'+(3+phases.length)+
+      '" style="background:'+catColor+'15;padding:6px 12px;font-size:11px;font-weight:700;'+
+      'color:'+catColor+';border-left:3px solid '+catColor+'">'+
+      cat.toUpperCase()+'</td></tr>';
+    catUsos.forEach(function(uso){
       rows+='<tr>'+
         '<td style="font-size:10px;font-family:monospace;color:var(--text3);width:44px">'+uso.id+'</td>'+
         '<td style="font-size:11px;font-weight:600;color:var(--text);padding:6px 8px">'+uso.name+'</td>'+
-        '<td style="text-align:center;width:36px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+catColor+'"></span></td>'+
+        '<td style="text-align:center;width:36px">'+
+        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+catColor+'"></span>'+
+        '</td>'+
         phases.map(function(ph){
-          var key=uso.id+'__'+ph.id;
+          var key=stdKey+'__'+uso.id+'__'+ph.id;
           var checked=!!(saved[key]);
           return '<td style="text-align:center;padding:6px 4px">'+
             (isAdminLevel()?
-              '<input type="checkbox" class="bim-uso-chk" data-key="'+key+'" style="width:16px;height:16px;cursor:pointer;accent-color:'+ph.color+'"'+(checked?' checked':'')+'>':
-              (checked?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+ph.color+'" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':
-              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>'))+
+              '<input type="checkbox" class="bim-uso-chk" data-key="'+key+
+              '" style="width:16px;height:16px;cursor:pointer;accent-color:'+ph.color+
+              '"'+(checked?' checked':'')+'>':
+              (checked?
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+ph.color+
+                '" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>':
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--border2)" stroke-width="2">'+
+                '<line x1="5" y1="12" x2="19" y2="12"/></svg>'))+
             '</td>';
         }).join('')+
         '</tr>';
@@ -4716,9 +4865,17 @@ function renderBimUsos(){
   });
 
   document.getElementById('content').innerHTML=
-    '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--brand)">'+
-    '📋 Selecciona los <strong>Usos BIM aplicables</strong> para cada fase del proyecto según la Guía Nacional BIM Perú 2023'+
+    // Standard badge
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;'+
+    'background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px">'+
+    '<span style="font-size:18px">'+std.flag+'</span>'+
+    '<div>'+
+    '<div style="font-size:12px;font-weight:700;color:var(--brand)">'+std.label+'</div>'+
+    '<div style="font-size:10px;color:var(--text3)">'+usos.length+' usos BIM · '+cats.length+' categorías</div>'+
     '</div>'+
+    '<button class="btn btn-sm" onclick="openBimStandardSelector()" style="margin-left:auto">Cambiar estándar</button>'+
+    '</div>'+
+    // Table
     '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
     '<table class="midp-tbl" style="width:100%;border-collapse:collapse">'+
     '<thead><tr>'+
@@ -4729,8 +4886,89 @@ function renderBimUsos(){
     '</tr></thead>'+
     '<tbody>'+rows+'</tbody>'+
     '</table></div>'+
-    '<div style="font-size:10px;color:var(--text3);margin-top:8px">'+BIM_USOS.length+' usos BIM de la Guía Nacional BIM Perú 2023</div>';
+    '<div style="font-size:10px;color:var(--text3);margin-top:8px">'+
+    usos.length+' Usos BIM — '+std.label+'</div>';
+
+  // Store current std key on content for saveBimUsos
+  document.getElementById('content').dataset.stdKey=stdKey;
 }
+
+function openBimStandardSelector(){
+  var pid=APP.project&&APP.project.id;
+  var currentStd='peru_2023';
+  try{currentStd=localStorage.getItem('midp_bimusos_std_'+pid)||'peru_2023';}catch(e){}
+
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='std-selector-modal';
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:560px">'+
+    '<div class="modal-header">'+
+    '<div><div class="modal-title">📋 Guías y Estándares BIM</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+
+    'Selecciona el estándar de referencia para los Usos BIM</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="std-close">✕</button></div>'+
+    '<div class="modal-body">'+
+    Object.entries(BIM_STANDARDS).map(function(entry){
+      var key=entry[0]; var std=entry[1];
+      var isSelected=key===currentStd;
+      return '<div class="std-option'+(isSelected?' std-selected':'')+
+        '" data-std-key="'+key+'" style="display:flex;align-items:flex-start;gap:14px;'+
+        'padding:14px 16px;border:2px solid '+(isSelected?'var(--brand)':'var(--border)')+
+        ';border-radius:10px;cursor:pointer;margin-bottom:10px;transition:all .15s;'+
+        'background:'+(isSelected?'var(--brand-light)':'var(--surface)')+'">' +
+        '<span style="font-size:28px;flex-shrink:0">'+std.flag+'</span>'+
+        '<div style="flex:1">'+
+        '<div style="font-size:13px;font-weight:700;color:var(--text)">'+std.label+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);margin-top:3px">'+
+        std.usos.length+' usos · '+std.categories.join(' · ')+'</div>'+
+        '</div>'+
+        (isSelected?'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':'')+
+        '</div>';
+    }).join('')+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn" id="std-cancel">Cancelar</button>'+
+    '<button class="btn btn-primary" id="std-apply">Aplicar</button>'+
+    '</div></div>';
+
+  var existing=document.getElementById('std-selector-modal');
+  if(existing)existing.remove();
+  document.getElementById('modal-container').appendChild(overlay);
+
+  var selectedKey=currentStd;
+
+  // Click on option
+  overlay.querySelectorAll('.std-option').forEach(function(el){
+    el.addEventListener('click',function(){
+      selectedKey=el.dataset.stdKey;
+      overlay.querySelectorAll('.std-option').forEach(function(opt){
+        var isThis=opt.dataset.stdKey===selectedKey;
+        opt.style.borderColor=isThis?'var(--brand)':'var(--border)';
+        opt.style.background=isThis?'var(--brand-light)':'var(--surface)';
+        // Update checkmark
+        var chk=opt.querySelector('svg');
+        if(isThis&&!chk){
+          opt.insertAdjacentHTML('beforeend',
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>');
+        }else if(!isThis&&chk){chk.remove();}
+      });
+    });
+  });
+
+  overlay.querySelector('#std-close').onclick=function(){overlay.remove();};
+  overlay.querySelector('#std-cancel').onclick=function(){overlay.remove();};
+  overlay.querySelector('#std-apply').onclick=function(){
+    try{localStorage.setItem('midp_bimusos_std_'+pid,selectedKey);}catch(e){}
+    overlay.remove();
+    renderBimUsosTable(selectedKey);
+    // Update topbar
+    document.getElementById('topbar-actions').innerHTML=
+      '<button class="btn btn-sm btn-primary" onclick="openBimStandardSelector()">📋 Guías y Estándares</button>'+
+      (isAdminLevel()?'<button class="btn btn-sm" onclick="saveBimUsos()">💾 Guardar</button>':'');
+  };
+}
+
 
 function getBimUsosSaved(){
   var pid=APP.project&&APP.project.id;

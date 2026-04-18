@@ -1225,8 +1225,16 @@ function openDeliverableModal(id){
         '<input type="text" class="input schema-field" data-key="'+s.key+'" maxlength="'+s.max_length+'" value="'+val+'" oninput="updateCodePreview()"></div>';
     }).join('');
 
-    var usersOpts=APP.users.filter(function(u){return u.is_active;}).map(function(u){
-      return '<option value="'+u.id+'"'+(d&&d.assigned_to===u.id?' selected':'')+'>'+u.full_name+(u.specialty?' ('+u.specialty+')':'')+'</option>';
+    // Only show users who are members of the active project
+    var projectMemberIds=(APP.projectMembers||[]).map(function(m){return m.user_id;});
+    var projectUsers=APP.users.filter(function(u){
+      return u.is_active && projectMemberIds.indexOf(u.id)>=0;
+    });
+    var usersOpts=projectUsers.map(function(u){
+      var pm=(APP.projectMembers||[]).find(function(m){return m.user_id===u.id;});
+      var roleLabel=pm?(ROLE_CFG[pm.role]||ROLE_CFG.specialist).label:'';
+      return '<option value="'+u.id+'"'+(d&&d.assigned_to===u.id?' selected':'')+'>'+
+        u.full_name+(u.specialty?' · '+u.specialty:'')+(roleLabel?' ('+roleLabel+')':'')+'</option>';
     }).join('');
 
     var generalInputs=generalSchemas().map(function(s){

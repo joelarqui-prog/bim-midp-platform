@@ -2475,17 +2475,18 @@ function loadSystems(){
 }
 
 
-function openSystemModal(pid){
+function openSystemModal(pid,prefillDiscipline){
   // Always fetch fresh from DB to avoid stale APP.systems cache
   var fetchP=pid
     ?sbGet('systems','?id=eq.'+pid+'&limit=1').then(function(r){return r[0]||null;})
     :Promise.resolve(null);
   fetchP.then(function(p){
   var discSchema=codeSchemas().find(function(s){return s.key==='disciplina';});
+  var prefillDisc=prefillDiscipline||'';
   var discOpts='<option value="">Sin disciplina</option>';
   if(discSchema&&discSchema.allowed_values){
     discOpts+=discSchema.allowed_values.map(function(v){
-      return '<option value="'+v.value+'"'+(p&&p.discipline===v.value?' selected':'')+'>'+v.value+' - '+v.label+'</option>';
+      return '<option value="'+v.value+'"'+((p?p.discipline:prefillDisc)===v.value?' selected':'')+'>'+v.value+' - '+v.label+'</option>';
     }).join('');
   }
   var overlay=document.createElement('div');overlay.id='sys-modal';overlay.className='modal-overlay';
@@ -4990,11 +4991,28 @@ function saveBimUsos(){
 // ─────────────────────────────────────────────────────────────
 // MATRIZ DE RESPONSABILIDADES
 // ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// ── MATRIZ DE RESPONSABILIDADES — rediseñada según Anexo N°06
+// Filas: Disciplinas → Sistemas
+// Columnas: Hitos × 4 subcolumnas (Equipo · LOD · LOI · Doc.)
+// ══════════════════════════════════════════════════════════════
+
 function renderRespMatrix(){
   document.getElementById('topbar-actions').innerHTML=
-    isAdminLevel()?'<button class="btn btn-sm" onclick="saveRespMatrix()">💾 Guardar</button>':'';
-  document.getElementById('content').innerHTML=loading();
+    (isAdminLevel()?'<button class="btn btn-sm" onclick="saveRespMatrix()">💾 Guardar</button>':'')+
+    (isAdminLevel()?'<button class="btn btn-sm" onclick="openTeamsManagerModal()">👥 Equipos</button>':'')+
+    '<button class="btn btn-primary btn-sm" onclick="exportRespMatrixPDF()">↓ PDF</button>';
 
+  var hitos=getPhaseGroups();
+  if(!hitos.length){
+    document.getElementById('content').innerHTML=
+      '<div class="empty"><div class="empty-icon">🗓️</div>'+
+      '<div class="empty-title">Sin hitos configurados</div>'+
+      '<div class="empty-desc">Configura los hitos en <strong>Config. de campos</strong> antes de usar la Matriz de Responsabilidades.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'schemas\',document.getElementById(\'sb-schemas\'))">→ Ir a Config. de campos</button>':'')+
+      '</div>';
+    return;
+  }
   if(!APP.systems.length){
     document.getElementById('content').innerHTML=
       '<div class="empty"><div class="empty-icon">📦</div>'+
@@ -5005,113 +5023,509 @@ function renderRespMatrix(){
     return;
   }
 
-  var members=(APP.projectMembers||[]).map(function(m){return m.users||{};}).filter(function(u){return u.full_name;});
-  var LOD_OPTS=['','LOD 100','LOD 200','LOD 300','LOD 350','LOD 400','LOD 500'];
-  var LOI_OPTS=['','LOI 1','LOI 2','LOI 3','LOI 4'];
-
   var saved=getRespMatrixSaved();
+  var teams=getProjectTeams();
+  var loinSaved=getLoinMatrixSaved();
+
+  // Build discipline groups from codeSchemas 'disciplina' allowed_values
+  var discSchema=codeSchemas().find(function(s){return s.key==='disciplina';});
+  var discAllowed=discSchema&&discSchema.allowed_values?
+    discSchema.allowed_values.map(function(v){return v.value;}):[];
 
   // Group systems by discipline
   var byDisc={};
-  APP.systems.forEach(function(p){
-    var disc=p.discipline||'Sin disciplina';
-    if(!byDisc[disc])byDisc[disc]=[];
-    byDisc[disc].push(p);
+  var discOrder=[];
+  APP.systems.forEach(function(s){
+    var disc=s.discipline||'Sin disciplina';
+    if(!byDisc[disc]){byDisc[disc]=[];discOrder.push(disc);}
+    byDisc[disc].push(s);
   });
+  // Sort disciplines: allowed_values order first, then others
+  discOrder.sort(function(a,b){
+    var ai=discAllowed.indexOf(a), bi=discAllowed.indexOf(b);
+    if(ai>=0&&bi>=0)return ai-bi;
+    if(ai>=0)return -1; if(bi>=0)return 1;
+    return a.localeCompare(b);
+  });
+  // Remove duplicates
+  discOrder=discOrder.filter(function(d,i){return discOrder.indexOf(d)===i;});
 
-  var memberHeaders=members.length?
-    members.map(function(u){
-      return '<th style="min-width:100px;text-align:center;font-size:10px">'+
-        '<div style="font-weight:600">'+u.full_name+'</div>'+
-        (u.specialty?'<div style="font-size:9px;color:var(--text3);font-weight:400">'+u.specialty+'</div>':'')+
-        '</th>';
-    }).join(''):
-    '<th>Sin miembros</th>';
+  // Team selector options
+  var teamOpts='<option value="">—</option>'+
+    teams.map(function(t){
+      return '<option value="'+t.code+'">'+t.code+'</option>';
+    }).join('');
 
+  // ── Header: hitos with 4 subcolumns each ──
+  var NUM_FIXED_COLS=3; // #, Disciplina/Sistema, Código
+  var totalCols=NUM_FIXED_COLS+hitos.length*4;
+
+  var hitoTh=hitos.map(function(h){
+    return '<th colspan="4" style="text-align:center;background:'+h.color+'22;'+
+      'color:'+h.color+';border-bottom:3px solid '+h.color+';font-size:11px;font-weight:700;'+
+      'padding:8px 6px;white-space:nowrap">'+
+      h.label+(h.sub?'<div style="font-size:9px;opacity:.75;font-weight:400">'+h.sub+'</div>':'')+
+      '</th>';
+  }).join('');
+
+  var subTh=hitos.map(function(h){
+    var base='background:'+h.color+'10;font-size:9px;color:var(--text3);padding:4px 5px;white-space:nowrap;text-align:center';
+    return '<th style="'+base+';min-width:72px">Equipo</th>'+
+           '<th style="'+base+';min-width:55px">LOD</th>'+
+           '<th style="'+base+';min-width:55px">LOI</th>'+
+           '<th style="'+base+';min-width:140px">Documentación</th>';
+  }).join('');
+
+  // ── Rows ──
   var rows='';
-  Object.entries(byDisc).forEach(function(entry){
-    var disc=entry[0]; var syss=entry[1];
-    var discColor=codeSchemas().find(function(s){return s.key==='disciplina'&&s.allowed_values;})||null;
-    rows+='<tr><td colspan="'+(4+Math.max(members.length,1))+'" style="background:var(--brand-light);padding:6px 12px;font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+disc+'</td></tr>';
-    syss.forEach(function(p){
-      var rKey='resp__'+p.id;
-      var lodKey='lod__'+p.id;
-      var loiKey='loi__'+p.id;
-      var respVal=saved[rKey]||'';
-      var lodVal=saved[lodKey]||'';
-      var loiVal=saved[loiKey]||'';
+  discOrder.forEach(function(disc){
+    var systems=byDisc[disc];
+    // Discipline group header row
+    rows+='<tr>'+
+      '<td colspan="'+totalCols+'" style="background:var(--brand-light);padding:7px 14px;'+
+      'font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+
+      '<div style="display:flex;align-items:center;gap:10px">'+
+      '<span>'+disc+'</span>'+
+      '<span style="font-size:10px;font-weight:400;color:var(--text3)">'+
+      systems.length+' sistema'+(systems.length>1?'s':'')+'</span>'+
+      (isAdminLevel()?
+        '<button class="btn btn-ghost btn-sm" style="font-size:9px;margin-left:auto" '+
+        'onclick="openAddSystemModal(\''+disc+'\')" title="Agregar sistema a esta disciplina">+ Sistema</button>':'')+'</div>'+
+      '</td></tr>';
 
-      rows+='<tr>'+
-        '<td><span class="code-chip" style="font-size:9px">'+p.code+'</span></td>'+
-        '<td style="font-size:11px;font-weight:600;color:var(--text)">'+p.name+'</td>'+
-        '<td style="min-width:80px">'+
-        (isAdminLevel()?
-          '<select class="input" style="font-size:10px;padding:3px 6px" data-matrix-key="'+lodKey+'">'+
-          LOD_OPTS.map(function(v){return '<option value="'+v+'"'+(v===lodVal?' selected':'')+'>'+v+'</option>';}).join('')+
-          '</select>':'<span style="font-size:11px">'+(lodVal||'--')+'</span>')+
+    // System rows
+    systems.forEach(function(sys,si){
+      var rowKey=sys.id;
+      rows+='<tr class="resp-row" data-sys-id="'+sys.id+'">'+
+        '<td style="padding:5px 8px;font-size:10px;color:var(--text3);text-align:center;width:32px">'+
+          sys.code.split('-').pop()+
         '</td>'+
-        '<td style="min-width:80px">'+
-        (isAdminLevel()?
-          '<select class="input" style="font-size:10px;padding:3px 6px" data-matrix-key="'+loiKey+'">'+
-          LOI_OPTS.map(function(v){return '<option value="'+v+'"'+(v===loiVal?' selected':'')+'>'+v+'</option>';}).join('')+
-          '</select>':'<span style="font-size:11px">'+(loiVal||'--')+'</span>')+
+        '<td style="font-size:11px;font-weight:600;color:var(--text);padding:5px 10px;min-width:180px">'+
+          sys.name+
         '</td>'+
-        (members.length?members.map(function(u){
-          var mKey='member__'+p.id+'__'+u.id;
-          var roles=['','Responsable (R)','Aprueba (A)','Consultado (C)','Informado (I)'];
-          var mVal=saved[mKey]||'';
-          var mLetter=mVal?mVal.charAt(0):'';
-          var mColor={R:'var(--brand)',A:'var(--green)',C:'var(--amber)',I:'var(--text3)'}[mLetter]||'var(--text3)';
-          return '<td style="text-align:center;min-width:100px">'+
-            (isAdminLevel()?
-              '<select class="input" style="font-size:10px;padding:3px 6px;text-align:center" data-matrix-key="'+mKey+'">'+
-              roles.map(function(v){return '<option value="'+v+'"'+(v===mVal?' selected':'')+'>'+v+'</option>';}).join('')+
-              '</select>':
-              (mLetter?'<span style="font-size:13px;font-weight:700;color:'+mColor+'">'+mLetter+'</span>':'<span style="color:var(--border2)">·</span>'))+
-            '</td>';
-        }).join(''):'<td>--</td>')+
+        // Check if LOIN data exists — show indicator
+        '<td style="text-align:center;padding:5px 6px;width:28px">'+
+          (function(){
+            var hasLoin=hitos.some(function(h){
+              var e=loinSaved[sys.id+'__'+h.key]||{};
+              return e.lod||e.loi;
+            });
+            return hasLoin?
+              '<span title="Tiene datos LOIN registrados" style="color:var(--green);font-size:14px">●</span>':
+              '<span title="Sin datos LOIN" style="color:var(--border2);font-size:14px">○</span>';
+          })()+
+        '</td>'+
+        // 4 subcolumns per hito
+        hitos.map(function(h){
+          var k=sys.id+'__'+h.key;
+          var d=saved[k]||{};
+          var teamVal=d.team||'';
+          var lodVal=d.lod||'';
+          var loiVal=d.loi||'';
+          var docVal=d.doc||'';
+          // LOD/LOI reference from LOIN matrix
+          var loinEntry=loinSaved[sys.id+'__'+h.key]||{};
+          var loinLod=loinEntry.lod||'';
+          var loinLoi=loinEntry.loi||'';
+
+          if(isAdminLevel()){
+            return '<td style="padding:3px 4px;text-align:center">'+
+              '<select class="input resp-team" '+
+              'data-resp-key="'+k+'" data-resp-field="team" '+
+              'style="font-size:10px;padding:2px 4px;min-width:70px;'+
+              'background:'+(teamVal?h.color+'12':'')+'">'+
+              teamOpts.replace('value="'+teamVal+'"','value="'+teamVal+'" selected')+
+              '</select></td>'+
+              '<td style="padding:3px 4px;text-align:center">'+
+              '<input type="text" class="input resp-lod" '+
+              'data-resp-key="'+k+'" data-resp-field="lod" '+
+              'value="'+lodVal+'" placeholder="'+(loinLod?loinLod:'—')+'" '+
+              'title="'+(loinLod?'LOIN: '+loinLod:'')+'" '+
+              'style="font-size:10px;padding:2px 4px;width:52px;text-align:center;'+
+              'border-color:'+(lodVal?h.color+'70':'var(--border)')+';'+
+              'font-weight:'+(lodVal?'700':'400')+'">'+
+              '</td>'+
+              '<td style="padding:3px 4px;text-align:center">'+
+              '<input type="text" class="input resp-loi" '+
+              'data-resp-key="'+k+'" data-resp-field="loi" '+
+              'value="'+loiVal+'" placeholder="'+(loinLoi?loinLoi:'—')+'" '+
+              'title="'+(loinLoi?'LOIN: '+loinLoi:'')+'" '+
+              'style="font-size:10px;padding:2px 4px;width:52px;text-align:center;'+
+              'border-color:'+(loiVal?h.color+'70':'var(--border)')+';'+
+              'font-weight:'+(loiVal?'700':'400')+'">'+
+              '</td>'+
+              '<td style="padding:3px 4px;min-width:140px">'+
+              '<div style="position:relative">'+
+              '<input type="text" class="input resp-doc" '+
+              'data-resp-key="'+k+'" data-resp-field="doc" '+
+              'value="'+docVal.replace(/"/g,'&quot;')+'" placeholder="Buscar entregable o escribir..." '+
+              'style="font-size:10px;padding:2px 6px;width:100%;padding-right:22px" '+
+              'autocomplete="off">'+
+              '<span style="position:absolute;right:6px;top:50%;transform:translateY(-50%);'+
+              'font-size:10px;color:var(--text3);cursor:pointer" '+
+              'onclick="openDocSearchDropdown(this,\''+k+'\')" title="Buscar entregable">🔍</span>'+
+              '</div></td>';
+          }else{
+            return '<td style="text-align:center;padding:5px">'+
+              (teamVal?'<span style="font-size:10px;font-weight:700;background:'+h.color+'18;'+
+                'color:'+h.color+';border-radius:4px;padding:2px 7px">'+teamVal+'</span>':
+                '<span style="color:var(--text3);font-size:10px">—</span>')+
+              '</td>'+
+              '<td style="text-align:center;padding:5px">'+
+              (lodVal?'<span style="font-size:10px;font-weight:700;color:'+h.color+'">'+lodVal+'</span>':
+                (loinLod?'<span style="font-size:10px;color:'+h.color+'80" title="Desde LOIN">'+loinLod+'</span>':
+                '<span style="color:var(--text3)">—</span>'))+
+              '</td>'+
+              '<td style="text-align:center;padding:5px">'+
+              (loiVal?'<span style="font-size:10px;font-weight:700;color:'+h.color+'">'+loiVal+'</span>':
+                (loinLoi?'<span style="font-size:10px;color:'+h.color+'80" title="Desde LOIN">'+loinLoi+'</span>':
+                '<span style="color:var(--text3)">—</span>'))+
+              '</td>'+
+              '<td style="font-size:10px;padding:5px;color:var(--text2)">'+
+              (docVal||'<span style="color:var(--text3)">—</span>')+
+              '</td>';
+          }
+        }).join('')+
         '</tr>';
     });
   });
 
   document.getElementById('content').innerHTML=
-    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#15803d">'+
-    'R = Responsable · A = Aprueba · C = Consultado · I = Informado'+
+    // Header banner
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;'+
+    'background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:var(--brand)">'+
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+
+    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>'+
+    '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'+
+    'Disciplinas → Sistemas × Hitos · LOD/LOI texto libre · ● = tiene LOIN registrado · '+
+    'Placeholder muestra valor de la Matriz LOIN'+
+    (isAdminLevel()?'<button class="btn btn-sm" style="margin-left:auto" onclick="saveRespMatrix()">💾 Guardar</button>':'')+
     '</div>'+
+    // Teams info bar
+    (teams.length?
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">'+
+      '<span style="font-size:10px;color:var(--text3)">Equipos del proyecto:</span>'+
+      teams.map(function(t){
+        return '<span style="font-size:10px;background:var(--brand-light);color:var(--brand);'+
+          'border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px;font-weight:600">'+
+          t.code+(t.name?' — '+t.name:'')+'</span>';
+      }).join('')+
+      (isAdminLevel()?'<button class="btn btn-ghost btn-sm" style="font-size:10px" onclick="openTeamsManagerModal()">✏️ Gestionar equipos</button>':'')+
+      '</div>':
+      (isAdminLevel()?
+        '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;'+
+        'margin-bottom:12px;font-size:12px;color:#c2410c;display:flex;align-items:center;gap:10px">'+
+        '⚠ No hay equipos configurados. Créalos para asignar responsables.'+
+        '<button class="btn btn-sm" style="margin-left:auto" onclick="openTeamsManagerModal()">+ Crear equipo</button></div>':''))+
+    // Table
     '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
-    '<table class="midp-tbl" style="width:100%;border-collapse:collapse">'+
-    '<thead><tr>'+
-    '<th>Código</th><th>Sistema</th><th style="min-width:80px">LOD</th><th style="min-width:80px">LOI</th>'+
-    memberHeaders+
-    '</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    '<table class="midp-tbl" style="border-collapse:collapse;width:100%">'+
+    '<thead>'+
+    '<tr>'+
+      '<th rowspan="2" style="width:32px;text-align:center">#</th>'+
+      '<th rowspan="2" style="min-width:180px">Sistema</th>'+
+      '<th rowspan="2" style="width:28px;text-align:center" title="Indicador LOIN">●</th>'+
+      hitoTh+
+    '</tr>'+
+    '<tr>'+subTh+'</tr>'+
+    '</thead>'+
+    '<tbody>'+rows+'</tbody>'+
+    '</table></div>';
+
+  // ── Live color feedback on inputs ──
+  document.querySelectorAll('.resp-lod,.resp-loi').forEach(function(inp){
+    var key=inp.dataset.respKey;
+    var hitoKey=key.split('__')[1];
+    var hito=hitos.find(function(h){return h.key===hitoKey;})||{color:'var(--brand)'};
+    inp.addEventListener('input',function(){
+      inp.style.borderColor=inp.value?hito.color+'80':'var(--border)';
+      inp.style.fontWeight=inp.value?'700':'400';
+    });
+    inp.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();saveRespMatrix();toast('Guardado.');}
+    });
+  });
+  document.querySelectorAll('.resp-team').forEach(function(sel){
+    var key=sel.dataset.respKey;
+    var hitoKey=key.split('__')[1];
+    var hito=hitos.find(function(h){return h.key===hitoKey;})||{color:'var(--brand)'};
+    sel.addEventListener('change',function(){
+      sel.style.background=sel.value?hito.color+'12':'';
+    });
+  });
+
+  // Doc search inputs
+  document.querySelectorAll('.resp-doc').forEach(function(inp){
+    inp.addEventListener('input',function(){
+      showDocSuggestions(inp);
+    });
+    inp.addEventListener('blur',function(){
+      setTimeout(function(){
+        var dd=document.getElementById('doc-dropdown');
+        if(dd)dd.remove();
+      },200);
+    });
+  });
+}
+
+// ── Doc search dropdown ──
+function showDocSuggestions(inp){
+  var q=inp.value.trim().toLowerCase();
+  var existing=document.getElementById('doc-dropdown');
+  if(existing)existing.remove();
+  if(!q||q.length<2)return;
+
+  var matches=(window._lastDeliverables||[]).filter(function(d){
+    return d.code.toLowerCase().indexOf(q)>=0||d.name.toLowerCase().indexOf(q)>=0;
+  }).slice(0,8);
+  if(!matches.length)return;
+
+  var dd=document.createElement('div');
+  dd.id='doc-dropdown';
+  dd.style.cssText='position:absolute;z-index:9999;background:var(--surface);border:1px solid var(--border);'+
+    'border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:200px;overflow-y:auto;min-width:280px';
+  matches.forEach(function(d){
+    var item=document.createElement('div');
+    item.style.cssText='padding:6px 12px;cursor:pointer;font-size:11px;border-bottom:1px solid var(--border2)';
+    item.innerHTML='<span class="code-chip" style="font-size:9px">'+d.code+'</span> '+d.name;
+    item.addEventListener('mousedown',function(e){
+      e.preventDefault();
+      inp.value=d.code+' — '+d.name;
+      dd.remove();
+    });
+    item.addEventListener('mouseover',function(){item.style.background='var(--brand-light)';});
+    item.addEventListener('mouseout',function(){item.style.background='';});
+    dd.appendChild(item);
+  });
+
+  // Position below input
+  var rect=inp.getBoundingClientRect();
+  var contentEl=document.getElementById('content');
+  var cRect=contentEl.getBoundingClientRect();
+  dd.style.top=(rect.bottom-cRect.top+contentEl.scrollTop)+'px';
+  dd.style.left=(rect.left-cRect.left)+'px';
+  dd.style.width=Math.max(280,rect.width)+'px';
+  contentEl.style.position='relative';
+  contentEl.appendChild(dd);
+}
+
+function openDocSearchDropdown(icon,key){
+  var inp=icon.previousElementSibling;
+  if(inp){inp.focus();inp.select();}
+}
+
+// ── GESTIÓN DE EQUIPOS DEL PROYECTO ──
+function getProjectTeams(){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return[];
+  try{return JSON.parse(localStorage.getItem('midp_teams_'+pid)||'[]');}catch(e){return[];}
+}
+function saveProjectTeams(teams){
+  var pid=APP.project&&APP.project.id;
+  if(!pid)return;
+  localStorage.setItem('midp_teams_'+pid,JSON.stringify(teams));
+}
+
+function openTeamsManagerModal(){
+  var teams=getProjectTeams();
+  var overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='teams-modal';
+
+  function buildTeamRows(tms){
+    if(!tms.length)return '<div style="padding:16px;text-align:center;font-size:12px;color:var(--text3)">Sin equipos configurados. Agrega el primero.</div>';
+    return tms.map(function(t,i){
+      return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border2)">'+
+        '<span style="font-size:12px;font-weight:700;color:var(--brand);min-width:80px;font-family:monospace">'+t.code+'</span>'+
+        '<span style="font-size:12px;flex:1">'+t.name+'</span>'+
+        '<span style="font-size:10px;color:var(--text3);min-width:80px">'+( t.discipline||'—')+'</span>'+
+        '<button class="btn btn-ghost btn-sm team-del-btn" data-idx="'+i+'" style="color:var(--red)">'+
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'+
+        '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'+
+        '</button></div>';
+    }).join('');
+  }
+
+  overlay.innerHTML=
+    '<div class="modal" style="max-width:560px">'+
+    '<div class="modal-header">'+
+    '<div><div class="modal-title">👥 Equipos del proyecto</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+
+    'Códigos de equipo independientes de los miembros registrados</div>'+
+    '</div>'+
+    '<button class="btn btn-ghost btn-sm" id="teams-close">✕</button></div>'+
+    '<div class="modal-body">'+
+    '<div id="teams-list">'+buildTeamRows(teams)+'</div>'+
+    '<div style="border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:14px;background:var(--bg)">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:10px">Nuevo equipo</div>'+
+    '<div class="form-grid">'+
+    '<div class="form-group"><label class="label">Código *</label>'+
+    '<input type="text" class="input" id="team-code" placeholder="Ej: E.ARQ, E.EST, E.I.ELE" style="font-family:monospace;text-transform:uppercase"></div>'+
+    '<div class="form-group"><label class="label">Nombre *</label>'+
+    '<input type="text" class="input" id="team-name" placeholder="Ej: Equipo de Arquitectura"></div>'+
+    '<div class="form-group"><label class="label">Disciplina</label>'+
+    '<input type="text" class="input" id="team-discipline" placeholder="Ej: Arquitectura"></div>'+
+    '</div>'+
+    '<button class="btn btn-primary btn-sm" id="team-add-btn" style="margin-top:8px">+ Agregar equipo</button>'+
+    '</div>'+
+    '</div>'+
+    '<div class="modal-footer">'+
+    '<button class="btn btn-primary" id="teams-done">Listo</button>'+
+    '</div></div>';
+
+  var existing=document.getElementById('teams-modal');
+  if(existing)existing.remove();
+  document.getElementById('modal-container').appendChild(overlay);
+
+  function refreshList(){
+    var current=getProjectTeams();
+    overlay.querySelector('#teams-list').innerHTML=buildTeamRows(current);
+    overlay.querySelectorAll('.team-del-btn').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var idx=parseInt(btn.dataset.idx);
+        var current2=getProjectTeams();
+        current2.splice(idx,1);
+        saveProjectTeams(current2);
+        refreshList();
+      });
+    });
+  }
+
+  overlay.querySelector('#teams-close').onclick=function(){overlay.remove();renderRespMatrix();};
+  overlay.querySelector('#teams-done').onclick=function(){overlay.remove();renderRespMatrix();};
+
+  overlay.querySelector('#team-add-btn').onclick=function(){
+    var code=overlay.querySelector('#team-code').value.trim().toUpperCase();
+    var name=overlay.querySelector('#team-name').value.trim();
+    var disc=overlay.querySelector('#team-discipline').value.trim();
+    if(!code||!name){toast('Código y nombre son obligatorios.','error');return;}
+    var current=getProjectTeams();
+    if(current.find(function(t){return t.code===code;})){
+      toast('Ya existe un equipo con ese código.','error');return;
+    }
+    current.push({code:code,name:name,discipline:disc||null});
+    saveProjectTeams(current);
+    overlay.querySelector('#team-code').value='';
+    overlay.querySelector('#team-name').value='';
+    overlay.querySelector('#team-discipline').value='';
+    overlay.querySelector('#team-code').focus();
+    refreshList();
+    toast('Equipo '+code+' agregado.');
+  };
+
+  overlay.querySelector('#team-code').addEventListener('keydown',function(e){
+    if(e.key==='Enter'){e.preventDefault();overlay.querySelector('#teams-modal').querySelector && overlay.querySelector('#team-add-btn').click();}
+  });
+
+  refreshList();
+}
+
+function openAddSystemModal(discipline){
+  // Quick shortcut to open system modal pre-filled with discipline
+  openSystemModal(null,discipline);
 }
 
 function getRespMatrixSaved(){
   var pid=APP.project&&APP.project.id;
-  if(!pid)return {};
-  try{return JSON.parse(localStorage.getItem('midp_respmatrix_'+pid)||'{}');}catch(e){return {};}
+  if(!pid)return{};
+  try{return JSON.parse(localStorage.getItem('midp_respmatrix_'+pid)||'{}');}catch(e){return{};}
 }
 
 function saveRespMatrix(){
   var pid=APP.project&&APP.project.id;
   if(!pid)return;
-  var data={};
-  document.querySelectorAll('[data-matrix-key]').forEach(function(el){
-    if(el.value)data[el.dataset.matrixKey]=el.value;
+  var allSaved=getRespMatrixSaved();
+  // Read all input values
+  document.querySelectorAll('.resp-team,.resp-lod,.resp-loi,.resp-doc').forEach(function(el){
+    var k=el.dataset.respKey;
+    var field=el.dataset.respField;
+    if(!k||!field)return;
+    if(!allSaved[k])allSaved[k]={};
+    allSaved[k][field]=el.value||null;
   });
-  try{localStorage.setItem('midp_respmatrix_'+pid,JSON.stringify(data));}catch(e){}
+  try{localStorage.setItem('midp_respmatrix_'+pid,JSON.stringify(allSaved));}catch(e){}
   toast('Matriz de responsabilidades guardada.');
+  renderRespMatrix();
 }
 
-// ─────────────────────────────────────────────────────────────
-// MATRIZ LOIN
-// ─────────────────────────────────────────────────────────────
-// ══════════════════════════════════════════════════════════════
-// ── MATRIZ LOIN — rediseñada según Anexo S1900.4 / Anexo N°05
-// Filas: sistemas, Columnas: hitos de field_schemas
-// Celda compacta: LOD + LOI (texto libre)
-// Celda expandida: detalle completo LOIN (modal)
-// ══════════════════════════════════════════════════════════════
+function exportRespMatrixPDF(){
+  if(!APP.project)return;
+  var hitos=getPhaseGroups();
+  var saved=getRespMatrixSaved();
+  var loinSaved=getLoinMatrixSaved();
+  var now=new Date();
+  var dateStr=now.toLocaleDateString('es-PE',{day:'2-digit',month:'long',year:'numeric'});
+
+  var byDisc={};
+  APP.systems.forEach(function(s){
+    var d=s.discipline||'Sin disciplina';
+    if(!byDisc[d])byDisc[d]=[];
+    byDisc[d].push(s);
+  });
+
+  var hitoTh=hitos.map(function(h){
+    return '<th colspan="4" style="background:'+h.color+'22;color:'+h.color+
+      ';border-bottom:2px solid '+h.color+';text-align:center;padding:5px;font-size:9px;font-weight:700">'+
+      h.label+'</th>';
+  }).join('');
+  var subTh=hitos.map(function(h){
+    return '<th style="text-align:center;font-size:8px;color:#64748b;padding:3px;background:'+h.color+'10">Equipo</th>'+
+           '<th style="text-align:center;font-size:8px;color:#64748b;padding:3px;background:'+h.color+'10">LOD</th>'+
+           '<th style="text-align:center;font-size:8px;color:#64748b;padding:3px;background:'+h.color+'10">LOI</th>'+
+           '<th style="text-align:center;font-size:8px;color:#64748b;padding:3px;background:'+h.color+'10">Doc.</th>';
+  }).join('');
+
+  var rows='';
+  Object.keys(byDisc).sort().forEach(function(disc){
+    rows+='<tr><td colspan="'+(2+hitos.length*4)+'" style="background:#eff6ff;padding:5px 10px;'+
+      'font-weight:700;font-size:9px;color:#1d4ed8;border-left:3px solid #3b82f6">'+disc+'</td></tr>';
+    byDisc[disc].forEach(function(s){
+      rows+='<tr>'+
+        '<td style="padding:4px 8px;font-family:monospace;font-size:8px;color:#1B3A6B;white-space:nowrap">'+s.code+'</td>'+
+        '<td style="padding:4px 8px;font-size:9px;font-weight:600">'+s.name+'</td>'+
+        hitos.map(function(h){
+          var d=saved[s.id+'__'+h.key]||{};
+          var loinE=loinSaved[s.id+'__'+h.key]||{};
+          return '<td style="text-align:center;padding:3px;font-size:9px;font-weight:700;color:'+h.color+'">'+
+            (d.team||'—')+'</td>'+
+            '<td style="text-align:center;padding:3px;font-size:9px;color:'+h.color+'">'+
+            (d.lod||loinE.lod||'—')+'</td>'+
+            '<td style="text-align:center;padding:3px;font-size:9px;color:'+h.color+'">'+
+            (d.loi||loinE.loi||'—')+'</td>'+
+            '<td style="padding:3px 5px;font-size:8px;color:#475569;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+            (d.doc||'—')+'</td>';
+        }).join('')+
+        '</tr>';
+    });
+  });
+
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
+    '<title>Matriz de Responsabilidades — '+APP.project.name+'</title>'+
+    '<style>body{font-family:Arial,sans-serif;margin:0;padding:16px;font-size:10px;color:#1e293b}'+
+    'h1{color:#1B3A6B;font-size:15px;margin:0 0 3px}'+
+    '.header{display:flex;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1B3A6B}'+
+    'table{width:100%;border-collapse:collapse}'+
+    'th{background:#1B3A6B;color:#fff;padding:5px 6px;font-size:8px;font-weight:600}'+
+    'td{border-bottom:1px solid #e2e8f0;vertical-align:middle}'+
+    'tr:nth-child(even) td{background:#f8fafc}'+
+    '@media print{body{padding:6px}@page{size:A3 landscape;margin:8mm}}</style></head><body>'+
+    '<div class="header"><div>'+
+    '<h1>Matriz de Responsabilidades</h1>'+
+    '<div style="color:#2E86C1;font-weight:600;font-size:11px">'+APP.project.name+(APP.project.code?' · '+APP.project.code:'')+'</div>'+
+    '</div><div style="text-align:right;font-size:9px;color:#64748b">'+dateStr+'<br>'+
+    APP.systems.length+' sistemas · '+hitos.length+' hitos</div></div>'+
+    '<table><thead><tr><th rowspan="2">Código</th><th rowspan="2">Sistema</th>'+hitoTh+'</tr>'+
+    '<tr>'+subTh+'</tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div style="font-size:8px;color:#94a3b8;margin-top:10px;text-align:center;border-top:1px solid #e2e8f0;padding-top:6px">'+
+    'Unify Management · Matriz de Responsabilidades · '+APP.project.name+' · '+dateStr+'</div>'+
+    '</body></html>';
+
+  var win=window.open('','_blank','width=1200,height=750');
+  if(!win){toast('Permite ventanas emergentes para exportar.','error');return;}
+  win.document.write(html);win.document.close();
+  win.onload=function(){win.focus();setTimeout(function(){win.print();},400);};
+  toast('PDF listo — usa Guardar como PDF en el diálogo.');
+}
+
 
 function renderLoinMatrix(){
   document.getElementById('topbar-actions').innerHTML=

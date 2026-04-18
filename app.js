@@ -73,7 +73,7 @@ function getAuthHeader(){
 }
 
 
-var APP={user:null,project:null,schemas:[],users:[],packages:[],groups:[],phases:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',packageFilter:'',fieldFilters:{},selectedIds:[]};
+var APP={user:null,project:null,schemas:[],users:[],systems:[],groups:[],phases:[],projectMembers:[],projectMember:null,search:'',statusFilter:'',systemFilter:'',fieldFilters:{},selectedIds:[]};
 var DEFAULT_PERMS={can_create_deliverables:false,can_edit_deliverables:false,can_delete_deliverables:false,can_change_status:false,can_register_progress:false};
 function can(a){
   if(!APP.user)return false;
@@ -102,7 +102,7 @@ function isKnownPhase(phKey){
 // Get any field value from a deliverable — checks direct columns AND field_values JSONB
 function getDelFieldVal(d, fieldKey){
   if(!d||!fieldKey)return '';
-  // 1. Direct column (riba2_delivery_date, work_package, etc.)
+  // 1. Direct column (riba2_delivery_date, system_code, etc.)
   if(d[fieldKey]!=null&&d[fieldKey]!=='')return d[fieldKey];
   // 2. field_values exact key
   var fv=d.field_values||{};
@@ -252,7 +252,7 @@ function buildCode(fields){
 function getFieldVal(d,s){
   if(s.field_group==='code')return d.field_values&&d.field_values[s.key]||'';
   if(s.field_group==='general'){
-    var map={nombre:'name',descripcion:'description',paquete:'work_package',formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',estado:'status',responsable:'assigned_to',predecesores:'predecessors'};
+    var map={nombre:'name',descripcion:'description',sistema:'system_code',formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',estado:'status',responsable:'assigned_to',predecesores:'predecessors'};
     var col=map[s.key];
     if(col==='assigned_to'){var u=APP.users.find(function(u){return u.id===d[col];});return u?u.full_name:'';}
     return col?d[col]||'':'';
@@ -373,14 +373,14 @@ function selectProject(projectId){
       APP.project=ps[0]||null;
       var pid=APP.project.id;
       var p2=sbGet('field_schemas','?project_id=eq.'+pid+'&is_active=eq.true&order=field_order.asc,code_order.asc');
-      var p3=sbGet('packages','?project_id=eq.'+pid+'&is_active=eq.true&order=code.asc');
+      var p3=sbGet('systems','?project_id=eq.'+pid+'&is_active=eq.true&order=code.asc');
       var p4=sbGet('project_members','?project_id=eq.'+pid+'&select=id,user_id,role,permissions,users(id,full_name,email,role,specialty,company,is_active)');
       var p5=sbGet('deliverable_groups','?project_id=eq.'+pid+'&is_active=eq.true&order=name.asc').catch(function(){return[];});
       var p6=sbGet('project_phases','?project_id=eq.'+pid+'&is_active=eq.true&order=display_order.asc').catch(function(){return[];});
       return Promise.all([p2,sbGet('users','?select=id,email,full_name,role,specialty,company,is_active&order=full_name.asc'),p3,p4,p5,p6]);
     })
     .then(function(r){
-      APP.schemas=r[0];APP.users=r[1];APP.packages=r[2];
+      APP.schemas=r[0];APP.users=r[1];APP.systems=r[2];
       APP.projectMembers=r[3]||[];APP.groups=r[4]||[];APP.phases=r[5]||[];
       // Guardar la membresía del usuario actual en este proyecto
       APP.projectMember=APP.projectMembers.find(function(m){return m.user_id===APP.user.id;})||null;
@@ -416,7 +416,7 @@ function showApp(user){
   var isAdmin=user.role==='admin';
   var pm=APP.projectMember;
   var isAdminLvl=isAdmin||(pm&&pm.role==='project_admin');
-  var pkgBtn=document.getElementById('sb-packages');if(pkgBtn)pkgBtn.style.display=isAdminLvl?'flex':'none';
+  var pkgBtn=document.getElementById('sb-systems');if(pkgBtn)pkgBtn.style.display=isAdminLvl?'flex':'none';
   var modBtn=document.getElementById('sb-models');if(modBtn)modBtn.style.display='flex';
   var grpBtn=document.getElementById('sb-groups');if(grpBtn)grpBtn.style.display=isAdminLvl?'flex':'none';
   var phsBtn=document.getElementById('sb-phases');if(phsBtn)phsBtn.style.display=isAdminLvl?'flex':'none';
@@ -438,7 +438,7 @@ function showApp(user){
 function doLogout(){
   var sc=getSupaClient();
   if(sc)sc.auth.signOut().catch(function(){});
-  APP.user=null;APP.project=null;APP.schemas=[];APP.packages=[];APP.fieldFilters={};
+  APP.user=null;APP.project=null;APP.schemas=[];APP.systems=[];APP.fieldFilters={};
   document.getElementById('app').style.display='none';
   document.getElementById('project-selector').style.display='none';
   document.getElementById('login-page').style.display='flex';
@@ -501,7 +501,7 @@ function openNewProjectModal(){
 function saveNewProject(){
   var code=document.getElementById('np-code').value.trim().toUpperCase();
   var name=document.getElementById('np-name').value.trim();
-  if(!code||!name){toast('Codigo y nombre son obligatorios.','error');return;}
+  if(!code||!name){toast('Código y nombre son obligatorios.','error');return;}
   var btn=document.getElementById('np-save');
   btn.disabled=true;btn.textContent='Creando...';
   sbPost('projects',{
@@ -599,7 +599,7 @@ function initAuth(){
 
 
 // ── NAV ──
-var BREAD={deliverables:'Entregables MIDP',packages:'Paquetes de trabajo',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables',phases:'Fases del proyecto',teams:'Equipos',bimusos:'Usos BIM',respmatrix:'Matriz de Responsabilidades',loinmatrix:'Matriz LOIN'};
+var BREAD={deliverables:'Entregables MIDP',systems:'Sistemas',progress:'Control de avance',schemas:'Config. de campos',users:'Usuarios y permisos',projects:'Proyectos',models:'Modelos BIM',groups:'Grupos de entregables',phases:'Fases del proyecto',teams:'Equipos',bimusos:'Usos BIM',respmatrix:'Matriz de Responsabilidades',loinmatrix:'Matriz LOIN'};
 // ── SIDEBAR COLLAPSE ──
 function toggleSbGroup(groupId,btn){
   var children=document.getElementById(groupId+'-children');
@@ -651,8 +651,8 @@ function nav(view,el){
     contentEl.style.overflow='auto';  // normal views scroll on content itself
     contentEl.style.overflowX='hidden';
   }
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases,teams:renderTeams,bimusos:renderBimUsos,respmatrix:renderRespMatrix,loinmatrix:renderLoinMatrix})[view]&&
-  ({deliverables:renderDeliverables,packages:renderPackages,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases,teams:renderTeams,bimusos:renderBimUsos,respmatrix:renderRespMatrix,loinmatrix:renderLoinMatrix})[view]();
+  ({deliverables:renderDeliverables,systems:renderSystems,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases,teams:renderTeams,bimusos:renderBimUsos,respmatrix:renderRespMatrix,loinmatrix:renderLoinMatrix})[view]&&
+  ({deliverables:renderDeliverables,systems:renderSystems,progress:renderProgress,schemas:renderSchemas,users:renderUsers,projects:renderProjects,models:renderModels,groups:renderGroups,phases:renderPhases,teams:renderTeams,bimusos:renderBimUsos,respmatrix:renderRespMatrix,loinmatrix:renderLoinMatrix})[view]();
 }
 
 // ── DELIVERABLES ──
@@ -696,9 +696,9 @@ function renderDeliverables(){
     '<option value="">Todos estados</option>'+
     Object.entries(STATUS_CFG).map(function(e){return '<option value="'+e[0]+'">'+e[1].label+'</option>';}).join('')+
     '</select>'+schemaFilters+
-    '<select class="input" style="width:120px;font-size:11px" onchange="APP.packageFilter=this.value;loadDeliverables()">'+
-    '<option value="">Paquete</option>'+
-    APP.packages.map(function(p){return '<option value="'+p.code+'"'+(APP.packageFilter===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
+    '<select class="input" style="width:120px;font-size:11px" onchange="APP.systemFilter=this.value;loadDeliverables()">'+
+    '<option value="">Sistema</option>'+
+    APP.systems.map(function(p){return '<option value="'+p.code+'"'+(APP.systemFilter===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
     '</select>'+
     '<button class="btn btn-sm" onclick="clearFilters()">x Limpiar</button>'+
     '<button class="btn btn-sm" onclick="loadDeliverables()">&#8635;</button>'+
@@ -716,7 +716,7 @@ function renderDeliverables(){
 }
 
 function setFieldFilter(key,val){APP.fieldFilters[key]=val;loadDeliverables();}
-function clearFilters(){APP.fieldFilters={};APP.search='';APP.statusFilter='';APP.packageFilter='';renderDeliverables();}
+function clearFilters(){APP.fieldFilters={};APP.search='';APP.statusFilter='';APP.systemFilter='';renderDeliverables();}
 
 function loadDeliverables(){
   if(!APP.project)return;
@@ -727,7 +727,7 @@ function loadDeliverables(){
     var v=APP.fieldFilters[k];
     if(v)params+='&field_values->>'+k+'=eq.'+encodeURIComponent(v);
   });
-  if(APP.packageFilter)params+='&work_package=eq.'+encodeURIComponent(APP.packageFilter);
+  if(APP.systemFilter)params+='&system_code=eq.'+encodeURIComponent(APP.systemFilter);
 
   Promise.all([
     sbGet('deliverables',params),
@@ -859,7 +859,7 @@ function loadDeliverables(){
           '<td class="scol" style="left:'+(canEdit?W.chk:0)+'px;background:var(--surface)">'+ 
           (d.url?'<a href="'+d.url+'" target="_blank" class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px;text-decoration:none;color:var(--brand)" title="Abrir enlace: '+d.url+'">'+d.code+' ↗</a>':
           '<span class="code-chip" style="font-size:10px;display:inline-block;word-break:break-all;white-space:normal;line-height:1.4;max-width:155px">'+d.code+'</span>')+ 
-          (d.work_package?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.work_package+'</div>':'')+
+          (d.system_code?'<div style="font-size:9px;color:var(--text3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px">'+d.system_code+'</div>':'')+
           '</td>'+
           '<td class="scol" style="left:'+stickyLeft2+'px;background:var(--surface)">'+
           '<div style="font-weight:600;color:var(--text);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:155px" title="'+d.name+'">'+d.name+'</div>'+
@@ -992,13 +992,13 @@ function openBulkEditModal(){
     '<select class="input" id="bulk-status"><option value="">— Sin cambio —</option>'+
     Object.entries(STATUS_CFG).map(function(e){return '<option value="'+e[0]+'">'+e[1].label+'</option>';}).join('')+
     '</select></div>'+
-    (APP.packages.length?
-      '<div class="form-group"><label class="label">Paquete de trabajo</label>'+
+    (APP.systems.length?
+      '<div class="form-group"><label class="label">Sistema</label>'+
       '<select class="input" id="bulk-pkg"><option value="">— Sin cambio —</option>'+
-      APP.packages.map(function(p){return '<option value="'+p.code+'">'+p.code+' — '+p.name+'</option>';}).join('')+
+      APP.systems.map(function(p){return '<option value="'+p.code+'">'+p.code+' — '+p.name+'</option>';}).join('')+
       '</select></div>':'') +
     '<div class="form-grid">'+
-    generalSchemas().filter(function(s){return s.key!=='estado'&&s.key!=='status'&&s.key!=='paquete';}).map(function(s){
+    generalSchemas().filter(function(s){return s.key!=='estado'&&s.key!=='status'&&s.key!=='sistema';}).map(function(s){
       var inputHtml='';
       if(s.field_type==='dropdown'&&s.options&&s.options.length){
         inputHtml='<select class="input" id="bulk-gen-'+s.key+'"><option value="">— Sin cambio —</option>'+
@@ -1077,16 +1077,16 @@ function saveBulkEdit(overlay){
   var st=document.getElementById('bulk-status');
   if(st&&st.value){payload.status=st.value;hasChange=true;}
 
-  // Paquete
+  // Sistema
   var pkg=document.getElementById('bulk-pkg');
-  if(pkg&&pkg.value){payload.work_package=pkg.value;hasChange=true;}
+  if(pkg&&pkg.value){payload.system_code=pkg.value;hasChange=true;}
 
   // Campos generales (mapean a columnas directas en deliverables)
   var GEN_MAP={nombre:'name',titulo:'name',title:'name',descripcion:'description',
                description:'description',formato:'file_format',
                tamano_lamina:'sheet_size',escala:'scale',predecesores:'predecessors'};
   generalSchemas().filter(function(s){
-    return s.key!=='estado'&&s.key!=='status'&&s.key!=='paquete';
+    return s.key!=='estado'&&s.key!=='status'&&s.key!=='sistema';
   }).forEach(function(s){
     var el=document.getElementById('bulk-gen-'+s.key);
     if(el&&el.value.trim()){
@@ -1239,14 +1239,14 @@ function openDeliverableModal(id){
 
     var generalInputs=generalSchemas().map(function(s){
       var colMap={nombre:'name',titulo:'name',title:'name',descripcion:'description',description:'description',
-        paquete:'work_package',formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',
+        sistema:'system_code',formato:'file_format',tamano_lamina:'sheet_size',escala:'scale',
         estado:'status',responsable:'assigned_to',predecesores:'predecessors'};
       var col=colMap[s.key];
       var val=d&&col?d[col]||'':'';
-      if(s.key==='paquete'){
+      if(s.key==='sistema'){
         return '<div class="form-group"><label class="label">'+s.name+'</label>'+
-          '<select class="input" id="gen_paquete"><option value="">Sin paquete</option>'+
-          APP.packages.map(function(p){return '<option value="'+p.code+'"'+(d&&d.work_package===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
+          '<select class="input" id="gen_sistema"><option value="">Sin sistema</option>'+
+          APP.systems.map(function(p){return '<option value="'+p.code+'"'+(d&&d.system_code===p.code?' selected':'')+'>'+p.code+' - '+p.name+'</option>';}).join('')+
           '</select></div>';
       }
       if(s.key==='grupo'||s.key==='group'){
@@ -1346,12 +1346,12 @@ function openDeliverableModal(id){
       // ── Campos fijos siempre presentes (independientes de field_schemas) ──
       '<div class="form-grid" style="margin-bottom:8px">'+
 
-      // Paquete — siempre visible
-      (generalSchemas().every(function(s){return s.key!=='paquete'&&s.key!=='work_package';})?
-        '<div class="form-group"><label class="label">Paquete de trabajo</label>'+
+      // Sistema — siempre visible
+      (generalSchemas().every(function(s){return s.key!=='sistema'&&s.key!=='system_code';})?
+        '<div class="form-group"><label class="label">Sistema</label>'+
         '<select class="input" id="del-pkg-fixed">'+
-        '<option value="">Sin paquete</option>'+
-        APP.packages.map(function(p){return '<option value="'+p.code+'"'+(d&&d.work_package===p.code?' selected':'')+'>'+p.code+' — '+p.name+'</option>';}).join('')+
+        '<option value="">Sin sistema</option>'+
+        APP.systems.map(function(p){return '<option value="'+p.code+'"'+(d&&d.system_code===p.code?' selected':'')+'>'+p.code+' — '+p.name+'</option>';}).join('')+
         '</select></div>':'')+
 
       // Grupo de entregables — siempre visible si hay grupos configurados
@@ -1389,7 +1389,7 @@ function openDeliverableModal(id){
             '<option value="">Seleccionar...</option>'+
             ['N1 — Federado General de Fase',
              'N2 — Federado de Disciplina',
-             'N3 — Agrupa Paquetes',
+             'N3 — Agrupa Sistemas',
              'N4 — Modelo de Sector'].map(function(v){
               var key=v.split(' ')[0];
               var fv=d&&d.field_values?d.field_values.nivel_federacion:'';
@@ -1482,7 +1482,7 @@ function saveDeliverable(id){
   sbGet('deliverables',dupQ).then(function(dup){
     if(dup.length>0){toast('Codigo duplicado.','error');btn.disabled=false;btn.textContent=id?'Actualizar':'Crear entregable';return;}
     function gvSmart(targetCol){
-      var KNOWN={description:['descripcion','description'],work_package:['paquete','work_package'],
+      var KNOWN={description:['descripcion','description'],system_code:['sistema','system_code'],
         file_format:['formato','file_format'],sheet_size:['tamano_lamina','sheet_size'],
         scale:['escala','scale'],status:['estado','status'],assigned_to:['responsable','assigned_to'],
         predecessors:['predecesores','predecessors']};
@@ -1509,7 +1509,7 @@ function saveDeliverable(id){
     var payload={
       project_id:APP.project.id,code:code,name:name,field_values:fields,created_by:APP.user.id,
       description:gvSmart('description'),
-      work_package:fixedPkgVal||gvSmart('work_package'),
+      system_code:fixedPkgVal||gvSmart('system_code'),
       file_format:gvSmart('file_format'),sheet_size:gvSmart('sheet_size'),
       scale:gvSmart('scale'),status:gvSmart('status')||'pending',
       assigned_to:gvSmart('assigned_to'),predecessors:gvSmart('predecessors'),
@@ -1590,11 +1590,11 @@ function deleteDeliverable(id){
 // ── EXPORTS ──
 function exportCSV(){
   sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc').then(function(items){
-    var headers=['Codigo','Nombre','Estado','Formato','Escala','Paquete',
+    var headers=['Codigo','Nombre','Estado','Formato','Escala','Sistema',
       'RIBA2 LOD','RIBA2 LOI','RIBA2 Fecha','RIBA3 LOD','RIBA3 LOI','RIBA3 Fecha',
       'RIBA4 LOD','RIBA4 LOI','RIBA4 Fecha'];
     var rows=items.map(function(d){return [
-      d.code,'"'+(d.name||'')+'"',d.status,d.file_format||'',d.scale||'',d.work_package||'',
+      d.code,'"'+(d.name||'')+'"',d.status,d.file_format||'',d.scale||'',d.system_code||'',
       d.riba2_lod||'',d.riba2_loi||'',d.riba2_delivery_date||'',
       d.riba3_lod||'',d.riba3_loi||'',d.riba3_delivery_date||'',
       d.riba4_lod||'',d.riba4_loi||'',d.riba4_delivery_date||''];});
@@ -1607,7 +1607,7 @@ function exportCSV(){
 
 function exportMIDP(){
   sbGet('deliverables','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc').then(function(items){
-    var headers=['N Ref','Titulo','Descripcion','Paquete','Formato','Tamano','Escala','Predecesores',
+    var headers=['N Ref','Titulo','Descripcion','Sistema','Formato','Tamano','Escala','Predecesores',
       'Proyecto','Originador','Fase Programa','Area Funcional','Fase Proyecto',
       'Volumen','Nivel','Disciplina','Tipo','Secuencial','Codigo','Estado',
       'RIBA2 Resp','RIBA2 LOD','RIBA2 LOI','RIBA2 Doc','RIBA2 T.Prod','RIBA2 Fecha',
@@ -1615,7 +1615,7 @@ function exportMIDP(){
       'RIBA4 Resp','RIBA4 LOD','RIBA4 LOI','RIBA4 Doc','RIBA4 T.Prod','RIBA4 Fecha'];
     var rows=items.map(function(d,i){
       var fv=d.field_values||{};
-      return [i+1,'"'+(d.name||'')+'"','"'+(d.description||'')+'"',d.work_package||'',
+      return [i+1,'"'+(d.name||'')+'"','"'+(d.description||'')+'"',d.system_code||'',
         d.file_format||'',d.sheet_size||'',d.scale||'',d.predecessors||'',
         fv.proyecto||'',fv.originador||'',fv.fase_programa||'',fv.area_funcional||'',
         fv.fase_proyecto||'',fv.volumen||'',fv.nivel||'',fv.disciplina||'',
@@ -1643,10 +1643,10 @@ function renderProgress(){
     '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Disciplina</label>'+
     '<select class="input" style="width:130px;font-size:11px" id="pf-disc" onchange="applyProgressFilters()">'+
     '<option value="">Todas</option></select></div>'+
-    '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Paquete</label>'+
+    '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Sistema</label>'+
     '<select class="input" style="width:140px;font-size:11px" id="pf-pkg" onchange="applyProgressFilters()">'+
     '<option value="">Todos</option>'+
-    APP.packages.map(function(p){return '<option value="'+p.code+'">'+p.code+' - '+p.name+'</option>';}).join('')+
+    APP.systems.map(function(p){return '<option value="'+p.code+'">'+p.code+' - '+p.name+'</option>';}).join('')+
     '</select></div>'+
     '<div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px">Fase RIBA</label>'+
     '<select class="input" style="width:160px;font-size:11px" id="pf-phase" onchange="applyProgressFilters()">'+
@@ -1706,7 +1706,7 @@ function applyProgressFilters(){
   var deliverables=allDels.filter(function(d){
     var _discKey=getProgressConfig().discField||'disciplina';
     if(disc&&((d.field_values&&d.field_values[_discKey])||d[_discKey]||'')!==disc)return false;
-    if(pkg&&d.work_package!==pkg)return false;
+    if(pkg&&d.system_code!==pkg)return false;
     if(phase){
       var hasPhase=false;
       // Check if it's a project phase ID or a schema phase key
@@ -2409,25 +2409,25 @@ function createUserViaEdgeFunction(email,pass,profilePayload){
 }
 
 
-// ── PAQUETES ──
-function renderPackages(){
-  document.getElementById('topbar-actions').innerHTML='<button class="btn btn-primary btn-sm" onclick="openPackageModal(null)">+ Nuevo paquete</button>';
-  document.getElementById('content').innerHTML='<div id="pkg-list">'+loading()+'</div>';
-  loadPackages();
+// ── SISTEMAS ──
+function renderSystems(){
+  document.getElementById('topbar-actions').innerHTML='<button class="btn btn-primary btn-sm" onclick="openSystemModal(null)">+ Nuevo sistema</button>';
+  document.getElementById('content').innerHTML='<div id="sys-list">'+loading()+'</div>';
+  loadSystems();
 }
 
-function loadPackages(){
-  sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
-    .then(function(pkgs){
-      APP.packages=pkgs;
-      var el=document.getElementById('pkg-list');
+function loadSystems(){
+  sbGet('systems','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
+    .then(function(syss){
+      APP.systems=syss;
+      var el=document.getElementById('sys-list');
       if(!el)return;
-      if(!pkgs.length){
-        el.innerHTML='<div class="card"><div class="empty"><div class="empty-title">Sin paquetes</div><div class="empty-desc">Crea el primero con + Nuevo paquete.</div></div></div>';
+      if(!syss.length){
+        el.innerHTML='<div class="card"><div class="empty"><div class="empty-title">Sin sistemas</div><div class="empty-desc">Crea el primero con + Nuevo sistema.</div></div></div>';
         return;
       }
       // Build as HTML string using data-* attributes — no outerHTML event loss
-      var rowsHtml=pkgs.map(function(p){
+      var rowsHtml=syss.map(function(p){
         var lodVal=p.lod||(p.options&&p.options.lod)||'--';
         var loiVal=p.loi||(p.options&&p.options.loi)||'--';
         return '<tr data-pkg-id="'+p.id+'" data-pkg-name="'+p.name.replace(/"/g,'&quot;')+'">'+
@@ -2456,29 +2456,29 @@ function loadPackages(){
         '<th>Inicio</th><th>Fin</th><th style="text-align:right">Acciones</th>'+
         '</tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
       // Attach listeners after innerHTML
-      document.querySelectorAll('.pkg-edit-btn').forEach(function(btn){
+      document.querySelectorAll('.sys-edit-btn').forEach(function(btn){
         btn.addEventListener('click',function(e){
           e.stopPropagation();
-          openPackageModal(btn.dataset.id);
+          openSystemModal(btn.dataset.id);
         });
       });
-      document.querySelectorAll('.pkg-del-btn').forEach(function(btn){
+      document.querySelectorAll('.sys-del-btn').forEach(function(btn){
         btn.addEventListener('click',function(e){
           e.stopPropagation();
-          confirmDeletePackage(btn.dataset.id,btn.dataset.name);
+          confirmDeleteSystem(btn.dataset.id,btn.dataset.name);
         });
       });
     }).catch(function(e){
-      var el=document.getElementById('pkg-list');
+      var el=document.getElementById('sys-list');
       if(el)el.innerHTML='<div class="empty"><div class="empty-title">Error</div><div class="empty-desc">'+e.message+'</div></div>';
     });
 }
 
 
-function openPackageModal(pid){
-  // Always fetch fresh from DB to avoid stale APP.packages cache
+function openSystemModal(pid){
+  // Always fetch fresh from DB to avoid stale APP.systems cache
   var fetchP=pid
-    ?sbGet('packages','?id=eq.'+pid+'&limit=1').then(function(r){return r[0]||null;})
+    ?sbGet('systems','?id=eq.'+pid+'&limit=1').then(function(r){return r[0]||null;})
     :Promise.resolve(null);
   fetchP.then(function(p){
   var discSchema=codeSchemas().find(function(s){return s.key==='disciplina';});
@@ -2488,103 +2488,103 @@ function openPackageModal(pid){
       return '<option value="'+v.value+'"'+(p&&p.discipline===v.value?' selected':'')+'>'+v.value+' - '+v.label+'</option>';
     }).join('');
   }
-  var overlay=document.createElement('div');overlay.id='pkg-modal';overlay.className='modal-overlay';
+  var overlay=document.createElement('div');overlay.id='sys-modal';overlay.className='modal-overlay';
   overlay.innerHTML=
     '<div class="modal"><div class="modal-header">'+
-    '<div class="modal-title">'+(p?'Editar: '+p.name:'Nuevo paquete')+'</div>'+
-    '<button class="btn btn-ghost btn-sm" id="pkg-close-btn">X</button></div>'+
+    '<div class="modal-title">'+(p?'Editar: '+p.name:'Nuevo sistema')+'</div>'+
+    '<button class="btn btn-ghost btn-sm" id="sys-close-btn">X</button></div>'+
     '<div class="modal-body"><div class="form-grid">'+
     '<div class="form-group"><label class="label">Codigo *</label>'+
-    '<input type="text" class="input" id="pkg-code" value="'+(p?p.code:'')+'" placeholder="Ej: PKG-ARQ-01"'+(p?' disabled':'')+' style="font-family:monospace"></div>'+
+    '<input type="text" class="input" id="sys-code" value="'+(p?p.code:'')+'" placeholder="Ej: PKG-ARQ-01"'+(p?' disabled':'')+' style="font-family:monospace"></div>'+
     '<div class="form-group"><label class="label">Nombre *</label>'+
-    '<input type="text" class="input" id="pkg-name" value="'+(p?p.name:'')+'" placeholder="Ej: Paquete Arquitectura"></div>'+
+    '<input type="text" class="input" id="sys-name" value="'+(p?p.name:'')+'" placeholder="Ej: Sistema Arquitectura"></div>'+
     '<div class="form-group full"><label class="label">Descripcion</label>'+
-    '<textarea class="input" id="pkg-desc" rows="2">'+(p?p.description||'':'')+'</textarea></div>'+
+    '<textarea class="input" id="sys-desc" rows="2">'+(p?p.description||'':'')+'</textarea></div>'+
     '<div class="form-group"><label class="label">Disciplina</label>'+
-    '<select class="input" id="pkg-disc">'+discOpts+'</select></div>'+
+    '<select class="input" id="sys-disc">'+discOpts+'</select></div>'+
     '<div class="form-group"><label class="label">Responsable</label>'+
-    '<input type="text" class="input" id="pkg-resp" value="'+(p?p.responsible||'':'')+'"></div>'+
+    '<input type="text" class="input" id="sys-resp" value="'+(p?p.responsible||'':'')+'"></div>'+
     '<div class="form-group"><label class="label">LOD <span style="font-size:9px;color:var(--text3)">Nivel de Desarrollo</span></label>'+
-    '<select class="input" id="pkg-lod">'+
+    '<select class="input" id="sys-lod">'+
     '<option value="">Sin LOD</option>'+
     ['LOD 100','LOD 200','LOD 300','LOD 350','LOD 400','LOD 500'].map(function(v){return '<option value="'+v+'"'+(p&&p.lod===v?' selected':'')+'>'+v+'</option>';}).join('')+
     '</select></div>'+
     '<div class="form-group"><label class="label">LOI <span style="font-size:9px;color:var(--text3)">Nivel de Información</span></label>'+
-    '<select class="input" id="pkg-loi">'+
+    '<select class="input" id="sys-loi">'+
     '<option value="">Sin LOI</option>'+
     ['LOI 1','LOI 2','LOI 3','LOI 4'].map(function(v){return '<option value="'+v+'"'+(p&&p.loi===v?' selected':'')+'>'+v+'</option>';}).join('')+
     '</select></div>'+
     '<div class="form-group"><label class="label">Fecha inicio</label>'+
-    '<input type="date" class="input" id="pkg-start" value="'+(p?p.start_date||'':'')+'"></div>'+
+    '<input type="date" class="input" id="sys-start" value="'+(p?p.start_date||'':'')+'"></div>'+
     '<div class="form-group"><label class="label">Fecha fin</label>'+
-    '<input type="date" class="input" id="pkg-end" value="'+(p?p.end_date||'':'')+'"></div>'+
+    '<input type="date" class="input" id="sys-end" value="'+(p?p.end_date||'':'')+'"></div>'+
     '</div></div>'+
     '<div class="modal-footer">'+
-    '<button class="btn" id="pkg-cancel-btn">Cancelar</button>'+
-    '<button class="btn btn-primary" id="pkg-save-btn">'+(p?'Actualizar paquete':'Crear paquete')+'</button>'+
+    '<button class="btn" id="sys-cancel-btn">Cancelar</button>'+
+    '<button class="btn btn-primary" id="sys-save-btn">'+(p?'Actualizar sistema':'Crear sistema')+'</button>'+
     '</div></div>';
   // Remove existing pkg-modal first to avoid duplicates
-  var existingPkg=document.getElementById('pkg-modal');
+  var existingPkg=document.getElementById('sys-modal');
   if(existingPkg)existingPkg.remove();
   document.getElementById('modal-container').appendChild(overlay);
-  overlay.querySelector('#pkg-close-btn').onclick=function(){overlay.remove();};
-  overlay.querySelector('#pkg-cancel-btn').onclick=function(){overlay.remove();};
-  var _pkgSaveBtn=overlay.querySelector('#pkg-save-btn');
-  _pkgSaveBtn.onclick=function(){savePackage(pid||null,overlay,_pkgSaveBtn);};
+  overlay.querySelector('#sys-close-btn').onclick=function(){overlay.remove();};
+  overlay.querySelector('#sys-cancel-btn').onclick=function(){overlay.remove();};
+  var _sysSaveBtn=overlay.querySelector('#sys-save-btn');
+  _sysSaveBtn.onclick=function(){saveSystem(pid||null,overlay,_sysSaveBtn);};
   }); // end fetchP.then
 }
 
-function savePackage(pid,_overlay,_btn){
-  // Receive overlay and btn as parameters from openPackageModal to avoid DOM lookup issues
-  var overlay=_overlay||document.getElementById('pkg-modal');
-  var btn=_btn||(overlay?overlay.querySelector('#pkg-save-btn'):null);
+function saveSystem(pid,_overlay,_btn){
+  // Receive overlay and btn as parameters from openSystemModal to avoid DOM lookup issues
+  var overlay=_overlay||document.getElementById('sys-modal');
+  var btn=_btn||(overlay?overlay.querySelector('#sys-save-btn'):null);
   if(!overlay){toast('Error: modal no encontrado.','error');return;}
-  var code=(overlay.querySelector('#pkg-code')||{value:''}).value.trim().toUpperCase();
-  var name=(overlay.querySelector('#pkg-name')||{value:''}).value.trim();
-  if(!code||!name){toast('Codigo y nombre son obligatorios.','error');return;}
+  var code=(overlay.querySelector('#sys-code')||{value:''}).value.trim().toUpperCase();
+  var name=(overlay.querySelector('#sys-name')||{value:''}).value.trim();
+  if(!code||!name){toast('Código y nombre son obligatorios.','error');return;}
   if(btn){btn.disabled=true;btn.textContent='Guardando...';}
   function gv(id){var el=overlay.querySelector('#'+id);return el?el.value||null:null;}
   var payload={project_id:APP.project.id,code:code,name:name,
-    description:gv('pkg-desc'),
-    discipline:gv('pkg-disc'),
-    responsible:gv('pkg-resp'),
-    start_date:gv('pkg-start'),
-    end_date:gv('pkg-end')};
-  var lodEl=overlay.querySelector('#pkg-lod');
-  var loiEl=overlay.querySelector('#pkg-loi');
+    description:gv('sys-desc'),
+    discipline:gv('sys-disc'),
+    responsible:gv('sys-resp'),
+    start_date:gv('sys-start'),
+    end_date:gv('sys-end')};
+  var lodEl=overlay.querySelector('#sys-lod');
+  var loiEl=overlay.querySelector('#sys-loi');
   if(lodEl)payload.lod=lodEl.value||null;
   if(loiEl)payload.loi=loiEl.value||null;
-  var req=pid?sbPatch('packages','id=eq.'+pid,payload):sbPost('packages',payload);
+  var req=pid?sbPatch('systems','id=eq.'+pid,payload):sbPost('systems',payload);
   req.then(function(){
-    toast(pid?'Paquete actualizado.':'Paquete creado.');
+    toast(pid?'Sistema actualizado.':'Sistema creado.');
     overlay.remove();
-    sbGet('packages','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
-      .then(function(pkgs){APP.packages=pkgs;}).catch(function(){});
-    loadPackages();
+    sbGet('systems','?project_id=eq.'+APP.project.id+'&is_active=eq.true&order=code.asc')
+      .then(function(syss){APP.systems=syss;}).catch(function(){});
+    loadSystems();
   }).catch(function(e){
     toast(String(e.message||e),'error');
-    if(btn){btn.disabled=false;btn.textContent=pid?'Actualizar paquete':'Crear paquete';}
+    if(btn){btn.disabled=false;btn.textContent=pid?'Actualizar sistema':'Crear sistema';}
   });
 }
 
-function confirmDeletePackage(pid,pname){
-  var overlay=document.createElement('div');overlay.id='pkg-confirm';overlay.className='modal-overlay';
+function confirmDeleteSystem(pid,pname){
+  var overlay=document.createElement('div');overlay.id='sys-confirm';overlay.className='modal-overlay';
   overlay.innerHTML='<div class="modal" style="max-width:380px">'+
-    '<div class="modal-header"><div class="modal-title">Eliminar paquete?</div>'+
+    '<div class="modal-header"><div class="modal-title">Eliminar sistema?</div>'+
     '<button class="btn btn-ghost btn-sm" id="pkgc-close">X</button></div>'+
-    '<div class="modal-body"><p style="font-size:13px;color:var(--text2)">Eliminar el paquete <strong>'+pname+'</strong>?</p>'+
-    '<p style="font-size:11px;color:var(--text3);margin-top:6px">Los entregables asociados no se veran afectados.</p></div>'+
+    '<div class="modal-body"><p style="font-size:13px;color:var(--text2)">Eliminar el sistema <strong>'+pname+'</strong>?</p>'+
+    '<p style="font-size:11px;color:var(--text3);margin-top:6px">Los entregables asociados no se verán afectados.</p></div>'+
     '<div class="modal-footer"><button class="btn" id="pkgc-cancel">Cancelar</button>'+
     '<button class="btn btn-danger" id="pkgc-del">Eliminar</button></div></div>';
   document.getElementById('modal-container').appendChild(overlay);
-  document.getElementById('pkgc-close').onclick=function(){closeModal('pkg-confirm');};
-  document.getElementById('pkgc-cancel').onclick=function(){closeModal('pkg-confirm');};
-  document.getElementById('pkgc-del').onclick=function(){deletePackage(pid);};
+  document.getElementById('sysc-close').onclick=function(){closeModal('sys-confirm');};
+  document.getElementById('sysc-cancel').onclick=function(){closeModal('sys-confirm');};
+  document.getElementById('sysc-del').onclick=function(){deleteSystem(pid);};
 }
 
-function deletePackage(pid){
-  sbPatch('packages','id=eq.'+pid,{is_active:false})
-    .then(function(){closeModal('pkg-confirm');toast('Paquete eliminado.');loadPackages();})
+function deleteSystem(pid){
+  sbPatch('systems','id=eq.'+pid,{is_active:false})
+    .then(function(){closeModal('sys-confirm');toast('Sistema eliminado.');loadSystems();})
     .catch(function(e){toast(e.message,'error');});
 }
 
@@ -2894,7 +2894,7 @@ function renderModels(){
                 '<div style="font-size:11px;font-weight:600;color:var(--text);line-height:1.3">'+m.name+'</div>'+
                 (m.url?'<a href="'+m.url+'" target="_blank" style="font-size:9px;color:var(--brand);margin-top:4px;display:block">↗ Abrir modelo</a>':'')+
                 '<div style="font-size:9px;color:var(--text3);margin-top:4px">'+
-                n3.filter(function(x){return getParent(x)===m.code;}).length+' modelos de paquetes'+
+                n3.filter(function(x){return getParent(x)===m.code;}).length+' modelos de sistemas'+
                 '</div></div>';
             }).join(''):
             '<div style="padding:16px 10px;text-align:center;font-size:11px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">Sin modelos N2 asociados</div>';
@@ -2902,11 +2902,11 @@ function renderModels(){
           '<div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text3)">← Selecciona una fase</div>')+
         '</div></div>'+
 
-        // ── COLUMNA 3: Modelos que agrupan paquetes (N3) ──
+        // ── COLUMNA 3: Modelos que agrupan sistemas (N3) ──
         '<div style="display:flex;flex-direction:column;gap:0;min-height:0">'+
         '<div style="font-size:9px;font-weight:700;color:#F59E0B;text-transform:uppercase;letter-spacing:.1em;padding:0 0 8px;display:flex;align-items:center;gap:6px">'+
         '<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#F59E0B;color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</span>'+
-        'Agrupa Paquetes</div>'+
+        'Agrupa Sistemas</div>'+
         '<div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-right:4px" id="fed-col3">'+
         (sel.n2?
           (function(){
@@ -2954,7 +2954,7 @@ function renderModels(){
             }).join(''):
             '<div style="padding:16px 10px;text-align:center;font-size:11px;color:var(--text3);border:1px dashed var(--border);border-radius:8px">Sin modelos N4 asociados</div>';
           })():
-          '<div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text3)">← Selecciona paquetes</div>')+
+          '<div style="padding:20px 10px;text-align:center;font-size:11px;color:var(--text3)">← Selecciona sisuetes</div>')+
         '</div></div>'+
 
         '</div>'; // end grid
@@ -3040,7 +3040,7 @@ function openModelFedConfigModal(){
     '<div style="display:flex;flex-direction:column;gap:4px">'+
     '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--brand);color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">1</span>Federado General de Fase — <code>nivel_federacion = N1</code></div>'+
     '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#10B981;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">2</span>Federado de Disciplina — <code>nivel_federacion = N2</code></div>'+
-    '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#F59E0B;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">3</span>Agrupa Paquetes — <code>nivel_federacion = N3</code></div>'+
+    '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#F59E0B;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">3</span>Agrupa Sistemas — <code>nivel_federacion = N3</code></div>'+
     '<div><span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#8B5CF6;color:white;font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:6px">4</span>Modelo de Sector — <code>nivel_federacion = N4</code></div>'+
     '</div>'+
     '<div style="margin-top:8px;color:var(--text3);font-size:10px">Al registrar un modelo en Entregables, selecciona el nivel y el modelo padre correspondiente.</div>'+
@@ -3762,14 +3762,14 @@ function downloadDelTemplate(){
     exRow.push(s.allowed_values?s.allowed_values[0].value:'EJEMPLO');
   });
   grpRow1.push('GENERAL','GENERAL','GENERAL','GENERAL','GENERAL');
-  grpRow2.push('nombre','estado','paquete','grupo','unidades_productivas');
-  grpRow3.push('Nombre / Título *','Estado','Paquete','Grupo','Unidades Productivas');
+  grpRow2.push('nombre','estado','sistema','grupo','unidades_productivas');
+  grpRow3.push('Nombre / Título *','Estado','Sistema','Grupo','Unidades Productivas');
   exRow.push('Plano de distribución arquitectónica','pending','PKG-ARQ-01','GRP-ARQ','1');
   grpRow1.push('GENERAL','GENERAL','GENERAL');
   grpRow2.push('descripcion','formato','url');
   grpRow3.push('Descripción','Formato','Hipervínculo (URL)');
   exRow.push('','RVT','https://acc.autodesk.com/...');
-  genSchemas.filter(function(s){return ['nombre','estado','paquete','grupo','descripcion','formato','url'].indexOf(s.key)<0;}).forEach(function(s){
+  genSchemas.filter(function(s){return ['nombre','estado','sistema','grupo','descripcion','formato','url'].indexOf(s.key)<0;}).forEach(function(s){
     grpRow1.push('GENERAL');grpRow2.push(s.key);grpRow3.push(s.name+(s.is_required?' *':''));exRow.push('');
   });
   phases.forEach(function(ph){
@@ -3904,7 +3904,7 @@ function executeImport(keyRow,dataRows,overlay){
   var btn=overlay.querySelector('#imp-confirm');
   btn.disabled=true;btn.textContent='Importando...';
   var codSchemas=codeSchemas();var genSchemas=generalSchemas();var phases=getPhaseGroups();
-  var GEN_MAP={nombre:'name',descripcion:'description',paquete:'work_package',formato:'file_format',url:'url',estado:'status'};
+  var GEN_MAP={nombre:'name',descripcion:'description',sistema:'system_code',formato:'file_format',url:'url',estado:'status'};
   var promises=dataRows.map(function(r){
     var fieldValues={};var payload={project_id:APP.project.id,is_active:true,status:'pending',created_by:APP.user.id};
     keyRow.forEach(function(key,ci){
@@ -3970,7 +3970,7 @@ function exportProgressPDF(){
   var deliverables=allDels.filter(function(d){
     var _discKey=getProgressConfig().discField||'disciplina';
     if(disc&&((d.field_values&&d.field_values[_discKey])||d[_discKey]||'')!==disc)return false;
-    if(pkg&&d.work_package!==pkg)return false;
+    if(pkg&&d.system_code!==pkg)return false;
     if(phase){
       var projPh=(APP.phases||[]).find(function(p){return p.id===phase;});
       if(projPh){var hasPhase=(getDelFieldVal(d,projPh.field_key))===projPh.field_value;if(!hasPhase)return false;}
@@ -4032,7 +4032,7 @@ function exportProgressPDF(){
   }).join('');
 
   var filterLabel='';
-  if(disc||pkg||phase)filterLabel='<div style="font-size:10px;color:#64748b;margin-bottom:8px">Filtros aplicados: '+(disc?'Disciplina: '+disc+' ':'')+(pkg?'Paquete: '+pkg+' ':'')+(phase?'Fase: '+phase:'')+'</div>';
+  if(disc||pkg||phase)filterLabel='<div style="font-size:10px;color:#64748b;margin-bottom:8px">Filtros aplicados: '+(disc?'Disciplina: '+disc+' ':'')+(pkg?'Sistema: '+pkg+' ':'')+(phase?'Fase: '+phase:'')+'</div>';
 
   // Build HTML for print
   var html='<!DOCTYPE html><html><head><meta charset="utf-8">'+
@@ -4151,9 +4151,9 @@ function exportDeliverablesPDF(){
 
   // Filter info
   var filters=[];
-  var st=APP.statusFilter;var pk=APP.packageFilter;
+  var st=APP.statusFilter;var pk=APP.systemFilter;
   if(st)filters.push('Estado: '+st);
-  if(pk)filters.push('Paquete: '+pk);
+  if(pk)filters.push('Sistema: '+pk);
   Object.keys(APP.fieldFilters||{}).forEach(function(k){if(APP.fieldFilters[k])filters.push(k+': '+APP.fieldFilters[k]);});
   var filterLine=filters.length?'<div style="font-size:10px;color:#64748b;margin-bottom:8px">Filtros: '+filters.join(' · ')+'</div>':'';
 
@@ -4995,12 +4995,12 @@ function renderRespMatrix(){
     isAdminLevel()?'<button class="btn btn-sm" onclick="saveRespMatrix()">💾 Guardar</button>':'';
   document.getElementById('content').innerHTML=loading();
 
-  if(!APP.packages.length){
+  if(!APP.systems.length){
     document.getElementById('content').innerHTML=
       '<div class="empty"><div class="empty-icon">📦</div>'+
-      '<div class="empty-title">Sin paquetes registrados</div>'+
-      '<div class="empty-desc">Registra paquetes de trabajo en el menú <strong>Paquetes</strong> para construir la Matriz de Responsabilidades.</div>'+
-      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'packages\',document.getElementById(\'sb-packages\'))">→ Ir a Paquetes</button>':'')+
+      '<div class="empty-title">Sin sistemas registrados</div>'+
+      '<div class="empty-desc">Registra sistemas en el menú <strong>Sistemas</strong> para construir la Matriz de Responsabilidades.</div>'+
+      (isAdminLevel()?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="nav(\'systems\',document.getElementById(\'sb-systems\'))">→ Ir a Sistemas</button>':'')+
       '</div>';
     return;
   }
@@ -5011,9 +5011,9 @@ function renderRespMatrix(){
 
   var saved=getRespMatrixSaved();
 
-  // Group packages by discipline
+  // Group systems by discipline
   var byDisc={};
-  APP.packages.forEach(function(p){
+  APP.systems.forEach(function(p){
     var disc=p.discipline||'Sin disciplina';
     if(!byDisc[disc])byDisc[disc]=[];
     byDisc[disc].push(p);
@@ -5030,10 +5030,10 @@ function renderRespMatrix(){
 
   var rows='';
   Object.entries(byDisc).forEach(function(entry){
-    var disc=entry[0]; var pkgs=entry[1];
+    var disc=entry[0]; var syss=entry[1];
     var discColor=codeSchemas().find(function(s){return s.key==='disciplina'&&s.allowed_values;})||null;
     rows+='<tr><td colspan="'+(4+Math.max(members.length,1))+'" style="background:var(--brand-light);padding:6px 12px;font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+disc+'</td></tr>';
-    pkgs.forEach(function(p){
+    syss.forEach(function(p){
       var rKey='resp__'+p.id;
       var lodKey='lod__'+p.id;
       var loiKey='loi__'+p.id;
@@ -5081,7 +5081,7 @@ function renderRespMatrix(){
     '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
     '<table class="midp-tbl" style="width:100%;border-collapse:collapse">'+
     '<thead><tr>'+
-    '<th>Código</th><th>Paquete</th><th style="min-width:80px">LOD</th><th style="min-width:80px">LOI</th>'+
+    '<th>Código</th><th>Sistema</th><th style="min-width:80px">LOD</th><th style="min-width:80px">LOI</th>'+
     memberHeaders+
     '</tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
@@ -5121,11 +5121,11 @@ function renderLoinMatrix(){
       '</div>';
     return;
   }
-  if(!APP.packages.length){
+  if(!APP.systems.length){
     document.getElementById('content').innerHTML=
       '<div class="empty"><div class="empty-icon">📦</div>'+
-      '<div class="empty-title">Sin paquetes registrados</div>'+
-      '<div class="empty-desc">Registra paquetes de trabajo en el menú Paquetes.</div></div>';
+      '<div class="empty-title">Sin sistemas registrados</div>'+
+      '<div class="empty-desc">Registra sistemas en el menú Sistemas.</div></div>';
     return;
   }
 
@@ -5133,9 +5133,9 @@ function renderLoinMatrix(){
   var LOD_OPTS=['','100','200','300','350','400','500'];
   var LOI_OPTS=['','1','2','3','4'];
 
-  // Group packages by discipline
+  // Group systems by discipline
   var byDisc={};
-  APP.packages.forEach(function(p){
+  APP.systems.forEach(function(p){
     var disc=p.discipline||'Sin disciplina';
     if(!byDisc[disc])byDisc[disc]=[];
     byDisc[disc].push(p);
@@ -5155,9 +5155,9 @@ function renderLoinMatrix(){
 
   var rows='';
   Object.entries(byDisc).forEach(function(entry){
-    var disc=entry[0]; var pkgs=entry[1];
+    var disc=entry[0]; var syss=entry[1];
     rows+='<tr><td colspan="'+(2+phases.length*2)+'" style="background:var(--brand-light);padding:6px 12px;font-size:11px;font-weight:700;color:var(--brand);border-left:3px solid var(--brand)">'+disc+'</td></tr>';
-    pkgs.forEach(function(p){
+    syss.forEach(function(p){
       rows+='<tr>'+
         '<td><span class="code-chip" style="font-size:9px">'+p.code+'</span></td>'+
         '<td style="font-size:11px;font-weight:600;color:var(--text);min-width:180px">'+p.name+'</td>'+
@@ -5184,12 +5184,12 @@ function renderLoinMatrix(){
 
   document.getElementById('content').innerHTML=
     '<div style="background:var(--brand-light);border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--brand)">'+
-    'Define el <strong>Level of Detail (LOD)</strong> y <strong>Level of Information (LOI)</strong> para cada paquete por fase de proyecto'+
+    'Define el <strong>Level of Detail (LOD)</strong> y <strong>Level of Information (LOI)</strong> para cada sistema por fase de proyecto'+
     '</div>'+
     '<div style="overflow:auto;border:1px solid var(--border);border-radius:var(--rl)">'+
     '<table class="midp-tbl" style="border-collapse:collapse">'+
     '<thead>'+
-    '<tr><th rowspan="2">Código</th><th rowspan="2" style="min-width:180px">Paquete de trabajo</th>'+phaseHeaders+'</tr>'+
+    '<tr><th rowspan="2">Código</th><th rowspan="2" style="min-width:180px">Sistema</th>'+phaseHeaders+'</tr>'+
     '<tr>'+phaseSubHeaders+'</tr>'+
     '</thead><tbody>'+rows+'</tbody></table></div>';
 }
